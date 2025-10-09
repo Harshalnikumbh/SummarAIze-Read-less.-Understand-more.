@@ -10,20 +10,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('SummarAIze app.js loaded successfully');
     
-    // FIXED: Use the correct Flask server URL
     const API_URL = 'http://127.0.0.1:5000';
     
     summarizeBtn.addEventListener('click', summarizeWebpage);
-    
     urlInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            summarizeWebpage();
-        }
+        if (e.key === 'Enter') summarizeWebpage();
     });
     
     async function summarizeWebpage() {
         const url = urlInput.value.trim();
-        
         console.log('Summarize button clicked, URL:', url);
         
         if (!url) {
@@ -43,14 +38,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const response = await fetch(`${API_URL}/summarize`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: url })
             });
             
             console.log('Response status:', response.status);
-            
             const data = await response.json();
             console.log('Response data:', data);
             
@@ -59,7 +51,6 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 showError(data.error || 'Failed to summarize webpage');
             }
-            
         } catch (error) {
             console.error('Fetch error:', error);
             showError('Connection error: ' + error.message);
@@ -71,9 +62,10 @@ document.addEventListener('DOMContentLoaded', function() {
         summarizeBtn.textContent = 'Summarizing...';
         
         summaryBox.innerHTML = `
-            <div style="text-align: center; padding: 40px; background: #f9f9f9; border-radius: 8px;">
-                <div style="width: 50px; height: 50px; margin: 0 auto; border: 4px solid #f3f3f3; border-top: 4px solid #4CAF50; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-                <p style="margin-top: 20px; color: #666;">🔍 Scraping and analyzing content...</p>
+            <div style="text-align:center;padding:40px;background:#f9f9f9;border-radius:8px;">
+                <div style="width:50px;height:50px;margin:0 auto;border:4px solid #f3f3f3;
+                    border-top:4px solid #4CAF50;border-radius:50%;animation:spin 1s linear infinite;"></div>
+                <p style="margin-top:20px;color:#666;">🔍 Scraping and analyzing content...</p>
             </div>
         `;
         summaryBox.style.display = 'block';
@@ -85,54 +77,36 @@ document.addEventListener('DOMContentLoaded', function() {
             document.head.appendChild(style);
         }
     }
+
+   function showSuccess(data) {
+    summarizeBtn.disabled = false;
+    summarizeBtn.textContent = 'Click to Summarize';
+
+    // Wide, compact layout
+    summaryBox.innerHTML = `
+        <div style="background:#ffffff;border:2px solid #22c55e;border-radius:12px;padding:24px;">
+            <h3 style="margin:0 0 12px 0;font-size:20px;color:#065f46;font-weight:600;">${escapeHtml(data.title || 'Summary')}</h3>
+            <p style="margin:0;line-height:1.7;color:#374151;white-space:pre-wrap;text-align:justify;">${escapeHtml(data.summary)}</p>
+        </div>
+    `;
+    summaryBox.style.display = 'block';
     
-    function showSuccess(data) {
-        summarizeBtn.disabled = false;
-        summarizeBtn.textContent = 'Click to Summarize';
-        
-        summaryBox.innerHTML = `
-            <div style="background: #f0f9f4; border: 2px solid #4CAF50; border-radius: 10px; padding: 25px;">
-                <h3 style="color: #4CAF50; margin: 0 0 15px 0;">✅ Summary Generated</h3>
-                
-                <div style="background: white; padding: 18px; border-radius: 8px; margin-bottom: 15px;">
-                    <div style="margin-bottom: 12px;">
-                        <strong>📄 Title:</strong>
-                        <p style="margin: 5px 0 0 0;">${escapeHtml(data.title)}</p>
-                    </div>
-                    <div style="margin-bottom: 12px;">
-                        <strong>📊 Content:</strong>
-                        <span>${data.content_length.toLocaleString()} characters</span>
-                    </div>
-                    <div>
-                        <strong>🔗 Source:</strong>
-                        <a href="${escapeHtml(data.url)}" target="_blank" style="color: #2196F3; word-break: break-all;">${escapeHtml(data.url)}</a>
-                    </div>
-                </div>
-                
-                <div style="background: white; padding: 20px; border-radius: 8px;">
-                    <h4 style="margin: 0 0 15px 0;">📝 Summary:</h4>
-                    <p style="line-height: 1.8; margin: 0;">${escapeHtml(data.summary)}</p>
-                </div>
-            </div>
-        `;
-        summaryBox.style.display = 'block';
-    }
+    // Scroll to summary smoothly
+    setTimeout(() => {
+        summaryBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
+}
     
     function showError(message) {
         summarizeBtn.disabled = false;
         summarizeBtn.textContent = 'Click to Summarize';
         
         summaryBox.innerHTML = `
-            <div style="background: #ffebee; border: 2px solid #f44336; border-radius: 10px; padding: 30px; text-align: center;">
-                <div style="font-size: 3em;">❌</div>
-                <h3 style="color: #f44336;">Error</h3>
-                <p style="color: #d32f2f;">${escapeHtml(message)}</p>
-                <button onclick="document.getElementById('summaryBox').style.display='none'" 
-                        style="background: #f44336; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer;">
-                    Close
-                </button>
-            </div>
-        `;
+    <div class="summary-container">
+        <h3 class="summary-title">${escapeHtml(data.title || 'Summary')}</h3>
+        <p class="summary-text">${escapeHtml(data.summary)}</p>
+    </div>
+`;
         summaryBox.style.display = 'block';
     }
     
@@ -146,7 +120,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function escapeHtml(text) {
-        const map = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'};
+        const map = {
+            '&': '&amp;', '<': '&lt;', '>': '&gt;',
+            '"': '&quot;', "'": '&#039;'
+        };
         return String(text).replace(/[&<>"']/g, m => map[m]);
     }
 });

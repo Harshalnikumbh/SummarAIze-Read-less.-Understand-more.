@@ -215,7 +215,7 @@ def scrape_webpage(url: str) -> Dict:
 
 if __name__ == "__main__":
     # Test the scraper
-    test_url = "https://example.com"
+    # test_url = "https://example.com"
     result = scrape_webpage(test_url)
     
     if result['success']:
@@ -224,3 +224,4 @@ if __name__ == "__main__":
         print(f"\nFirst 500 characters:\n{result['content'][:500]}...")
     else:
         print(f"\n✗ Error: {result['error']}")
+    
