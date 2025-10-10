@@ -259,6 +259,166 @@ def summarize_reviews_with_analysis(reviews_data, max_reviews=50):
         }
 
 
+def generate_brief_review_summary(review_texts, stats):
+    """
+    Generate a brief 2-3 line summary of reviews with key insights.
+    """
+    if not review_texts:
+        return "No reviews available."
+    
+    try:
+        # Combine reviews
+        combined_text = " ".join([clean_text(r) for r in review_texts[:20]])  # Use fewer reviews for brief summary
+        
+        # Limit to smaller input for concise output
+        words = combined_text.split()
+        if len(words) > 400:
+            words = words[:400]
+            combined_text = " ".join(words)
+        
+        # Generate very concise summary
+        summary = summarizer(
+            combined_text,
+            max_length=100,  # Much shorter - about 2-3 sentences
+            min_length=40,   # Minimum 40 tokens
+            do_sample=False,
+            truncation=True,
+            max_new_tokens=100,
+            num_beams=4,
+            length_penalty=0.8,  # Slightly favor shorter summaries
+            early_stopping=True,
+            no_repeat_ngram_size=3
+        )
+        
+        brief_text = summary[0]['summary_text']
+        brief_text = post_process_summary(brief_text)
+        
+        # Add rating context if available
+        if stats.get('average_rating'):
+            avg_rating = stats['average_rating']
+            sentiment = "highly positive" if avg_rating >= 4.5 else "positive" if avg_rating >= 4.0 else "mixed" if avg_rating >= 3.0 else "negative"
+            
+            # Prepend rating context
+            rating_intro = f"Overall, customers have a {sentiment} experience (avg {avg_rating}/5). "
+            brief_text = rating_intro + brief_text
+        
+        print(f"[BRIEF SUMMARY] Generated: {len(brief_text)} characters")
+        return brief_text
+    
+    except Exception as e:
+        print(f"[BRIEF SUMMARY] Error: {str(e)}")
+        # Fallback to extractive brief summary
+        return generate_extractive_brief_summary(review_texts, stats)
+
+
+def generate_extractive_brief_summary(review_texts, stats):
+    """Fallback extractive brief summary (2-3 sentences)."""
+    if not review_texts:
+        return "No reviews available."
+    
+    # Get most representative sentences
+    all_sentences = []
+    for review in review_texts[:10]:
+        sentences = re.split(r'[.!?]+', review)
+        all_sentences.extend([s.strip() for s in sentences if 20 < len(s.strip()) < 150])
+    
+    if all_sentences:
+        # Take first 2-3 sentences
+        summary_sentences = all_sentences[:3]
+        brief = ". ".join(summary_sentences) + "."
+        
+        # Add rating context
+        if stats.get('average_rating'):
+            avg_rating = stats['average_rating']
+            sentiment = "highly positive" if avg_rating >= 4.5 else "positive" if avg_rating >= 4.0 else "mixed" if avg_rating >= 3.0 else "negative"
+            rating_intro = f"Overall, customers have a {sentiment} experience (avg {avg_rating}/5). "
+            brief = rating_intro + brief
+        
+        return brief
+    
+    return "Reviews available but brief summary could not be generated."
+
+
+def generate_brief_review_summary(review_texts, stats):
+    """
+    Generate a brief 2-3 line summary of reviews with key insights.
+    """
+    if not review_texts:
+        return "No reviews available."
+    
+    try:
+        # Combine reviews
+        combined_text = " ".join([clean_text(r) for r in review_texts[:20]])  # Use fewer reviews for brief summary
+        
+        # Limit to smaller input for concise output
+        words = combined_text.split()
+        if len(words) > 400:
+            words = words[:400]
+            combined_text = " ".join(words)
+        
+        # Generate very concise summary
+        summary = summarizer(
+            combined_text,
+            max_length=100,  # Much shorter - about 2-3 sentences
+            min_length=40,   # Minimum 40 tokens
+            do_sample=False,
+            truncation=True,
+            max_new_tokens=100,
+            num_beams=4,
+            length_penalty=0.8,  # Slightly favor shorter summaries
+            early_stopping=True,
+            no_repeat_ngram_size=3
+        )
+        
+        brief_text = summary[0]['summary_text']
+        brief_text = post_process_summary(brief_text)
+        
+        # Add rating context if available
+        if stats.get('average_rating'):
+            avg_rating = stats['average_rating']
+            sentiment = "highly positive" if avg_rating >= 4.5 else "positive" if avg_rating >= 4.0 else "mixed" if avg_rating >= 3.0 else "negative"
+            
+            # Prepend rating context
+            rating_intro = f"Overall, customers have a {sentiment} experience (avg {avg_rating}/5). "
+            brief_text = rating_intro + brief_text
+        
+        print(f"[BRIEF SUMMARY] Generated: {len(brief_text)} characters")
+        return brief_text
+    
+    except Exception as e:
+        print(f"[BRIEF SUMMARY] Error: {str(e)}")
+        # Fallback to extractive brief summary
+        return generate_extractive_brief_summary(review_texts, stats)
+
+
+def generate_extractive_brief_summary(review_texts, stats):
+    """Fallback extractive brief summary (2-3 sentences)."""
+    if not review_texts:
+        return "No reviews available."
+    
+    # Get most representative sentences
+    all_sentences = []
+    for review in review_texts[:10]:
+        sentences = re.split(r'[.!?]+', review)
+        all_sentences.extend([s.strip() for s in sentences if 20 < len(s.strip()) < 150])
+    
+    if all_sentences:
+        # Take first 2-3 sentences
+        summary_sentences = all_sentences[:3]
+        brief = ". ".join(summary_sentences) + "."
+        
+        # Add rating context
+        if stats.get('average_rating'):
+            avg_rating = stats['average_rating']
+            sentiment = "highly positive" if avg_rating >= 4.5 else "positive" if avg_rating >= 4.0 else "mixed" if avg_rating >= 3.0 else "negative"
+            rating_intro = f"Overall, customers have a {sentiment} experience (avg {avg_rating}/5). "
+            brief = rating_intro + brief
+        
+        return brief
+    
+    return "Reviews available but brief summary could not be generated."
+
+
 def generate_review_summary(review_texts):
     """Generate an overall summary of all reviews."""
     if not review_texts:
@@ -609,6 +769,7 @@ def post_process_summary(summary):
     
     return summary
 
+
 def extractive_summary(text, num_sentences=8):
     """Enhanced fallback extractive summary."""
     if isinstance(text, list):
@@ -640,6 +801,7 @@ def extractive_summary(text, num_sentences=8):
         return ". ".join(summary_sentences) + "."
     
     return "Content available but summary could not be generated."
+
 
 # Maintain backward compatibility
 def summarize_reviews(review_texts, max_reviews=50):

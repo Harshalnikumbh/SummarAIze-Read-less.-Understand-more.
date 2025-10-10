@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 import re
 import time
 
+
 class WebpageScraper:
     """
     Enhanced webpage scraper for extracting text content and product reviews.
@@ -224,49 +225,111 @@ class WebpageScraper:
         return reviews
     
     def _scrape_flipkart_reviews(self, soup: BeautifulSoup) -> List[Dict]:
-        """Scrape reviews from Flipkart product pages."""
+        """Scrape reviews from Flipkart product pages with enhanced selectors."""
         reviews = []
         
-        # Flipkart review selectors
-        review_containers = soup.find_all('div', class_=re.compile(r'_1AtVbE|col-12-12', re.IGNORECASE))
+        print(f"[FLIPKART] Attempting to scrape reviews...")
         
-        print(f"[FLIPKART] Found {len(review_containers)} potential review containers")
+        # Multiple strategies to find reviews
         
-        for container in review_containers[:50]:
+        # Strategy 1: Look for review section by common patterns
+        review_sections = [
+            soup.find('div', class_=re.compile(r'review', re.IGNORECASE)),
+            soup.find('div', id=re.compile(r'review', re.IGNORECASE)),
+            soup.find_all('div', class_=re.compile(r'_1AtVbE|col-12-12|_27M-vq', re.IGNORECASE)),
+        ]
+        
+        # Strategy 2: Find all divs that contain rating patterns
+        all_containers = []
+        for section in review_sections:
+            if section:
+                if isinstance(section, list):
+                    all_containers.extend(section)
+                else:
+                    all_containers.append(section)
+        
+        # Strategy 3: Broad search for any element with star ratings
+        if not all_containers:
+            all_containers = soup.find_all(['div', 'article', 'section'], 
+                                          text=re.compile(r'★|⭐|star', re.IGNORECASE))
+        
+        print(f"[FLIPKART] Found {len(all_containers)} potential review containers")
+        
+        for container in all_containers[:100]:  # Check more containers
             try:
-                # Extract rating
-                rating_elem = container.find('div', class_=re.compile(r'_3LWZlK|hGSR34'))
+                # Extract rating - multiple methods
                 rating = None
+                
+                # Method 1: Look for star rating
+                rating_elem = container.find('div', class_=re.compile(r'_3LWZlK|hGSR34|_1BLPMq|gUuXy-', re.IGNORECASE))
+                if not rating_elem:
+                    rating_elem = container.find('span', class_=re.compile(r'rating|star', re.IGNORECASE))
+                if not rating_elem:
+                    # Look for any element with rating text
+                    rating_elem = container.find(text=re.compile(r'(\d+)\s*★|(\d+)\s*star', re.IGNORECASE))
+                
                 if rating_elem:
-                    rating_text = rating_elem.get_text(strip=True)
+                    rating_text = rating_elem.get_text(strip=True) if hasattr(rating_elem, 'get_text') else str(rating_elem)
                     rating_match = re.search(r'(\d+)', rating_text)
                     if rating_match:
                         rating = float(rating_match.group(1))
                 
-                # Extract review text
-                body_elem = container.find('div', class_=re.compile(r't-ZTKy'))
-                if not body_elem:
-                    body_elem = container.find('div', class_='_2-N8zT')
-                body = body_elem.get_text(strip=True) if body_elem else ""
+                # Extract review text - multiple methods
+                body = ""
+                
+                # Method 1: Common Flipkart review classes
+                body_elem = container.find('div', class_=re.compile(r't-ZTKy|_6K-7Co|_2-N8zT|ZmyHeo', re.IGNORECASE))
+                if body_elem:
+                    body = body_elem.get_text(strip=True)
+                
+                # Method 2: Look for paragraph tags with substantial text
+                if not body:
+                    paragraphs = container.find_all('p')
+                    for p in paragraphs:
+                        text = p.get_text(strip=True)
+                        if len(text) > 50:  # Substantial text
+                            body = text
+                            break
+                
+                # Method 3: Get all text from container if it looks like a review
+                if not body:
+                    full_text = container.get_text(separator=' ', strip=True)
+                    # Check if it looks like a review (has some review keywords)
+                    review_keywords = ['good', 'bad', 'quality', 'product', 'purchased', 'bought', 'recommend', 'love', 'hate', 'excellent', 'poor', 'satisfied', 'disappointed']
+                    if any(keyword in full_text.lower() for keyword in review_keywords) and 50 < len(full_text) < 2000:
+                        body = full_text
                 
                 # Extract reviewer name
-                author_elem = container.find('p', class_=re.compile(r'_2sc7ZR|_2NsDsF'))
-                author = author_elem.get_text(strip=True) if author_elem else "Anonymous"
+                author = "Anonymous"
+                author_elem = container.find('p', class_=re.compile(r'_2sc7ZR|_2NsDsF|_2V5EHH', re.IGNORECASE))
+                if not author_elem:
+                    author_elem = container.find(['span', 'div'], class_=re.compile(r'name|author|user', re.IGNORECASE))
+                if author_elem:
+                    author = author_elem.get_text(strip=True)
                 
-                if body and len(body) > 20:  # Only add substantial reviews
+                # Extract date
+                date = ""
+                date_elem = container.find(['span', 'p', 'div'], class_=re.compile(r'date|time|_3dgbVa', re.IGNORECASE))
+                if date_elem:
+                    date = date_elem.get_text(strip=True)
+                
+                # Only add if we have meaningful review text
+                if body and len(body) > 30:
                     reviews.append({
                         'rating': rating,
                         'title': "",
                         'body': body,
                         'author': author,
-                        'date': "",
+                        'date': date,
                         'helpful': ""
                     })
+                    print(f"[FLIPKART] ✓ Extracted review: {len(body)} chars, rating: {rating}")
             
             except Exception as e:
-                print(f"[FLIPKART] Error parsing review: {e}")
+                print(f"[FLIPKART] Error parsing container: {e}")
                 continue
         
+        print(f"[FLIPKART] ✅ Total reviews extracted: {len(reviews)}")
         return reviews
     
     def _scrape_generic_reviews(self, soup: BeautifulSoup) -> List[Dict]:
@@ -437,7 +500,7 @@ def scrape_webpage(url: str, scrape_reviews: bool = True) -> Dict:
 
 if __name__ == "__main__":
     # Test the scraper
-    test_url = "https://www.amazon.in/Dopamine-Detox-Remove-Distractions-Productivity-ebook/dp/B098MHBF23/ref=books_storefront_desktop_mfs_ts_1?_encoding=UTF8&pd_rd_w=S92WH&content-id=amzn1.sym.87f92a02-d841-4c88-a23e-65534f93faa3&pf_rd_p=87f92a02-d841-4c88-a23e-65534f93faa3&pf_rd_r=NQ6ZBNSCFN5JTRM9N536&pd_rd_wg=uH4yH&pd_rd_r=3e70fd1c-9b3c-40e8-815a-080c1ffc84d5"  
+    test_url = "https://www.amazon.in/dp/B0EXAMPLE"  # Replace with actual product URL
     result = scrape_webpage(test_url)
     
     if result['success']:
