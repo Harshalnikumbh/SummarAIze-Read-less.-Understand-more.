@@ -1,14 +1,16 @@
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import re
 import time
+import json
+from urllib.parse import urlparse, parse_qs
 
 
 class WebpageScraper:
     """
     Enhanced webpage scraper for extracting text content and product reviews.
-    Supports general webpages and e-commerce product pages.
+    Supports general webpages and e-commerce product pages with pagination.
     """
     
     def __init__(self):
@@ -26,13 +28,14 @@ class WebpageScraper:
         }
         self.session = requests.Session()
     
-    def scrape(self, url: str, scrape_reviews: bool = False) -> Dict:
+    def scrape(self, url: str, scrape_reviews: bool = False, max_pages: int = 3) -> Dict:
         """
-        Scrape webpage content and optionally product reviews.
+        Scrape webpage content and optionally product reviews with pagination.
         
         Args:
             url: The webpage URL to scrape
             scrape_reviews: Whether to attempt scraping product reviews
+            max_pages: Maximum number of review pages to scrape for pagination
             
         Returns:
             Dictionary containing title, content, reviews, and metadata
@@ -67,9 +70,9 @@ class WebpageScraper:
             
             # Scrape reviews if requested and this is a product page
             if scrape_reviews or is_product_page:
-                reviews = self._scrape_reviews(soup, url)
+                reviews = self._scrape_reviews_with_pagination(soup, url, max_pages)
                 result['reviews'] = reviews
-                print(f"[SCRAPER] Extracted {len(reviews)} reviews")
+                print(f"[SCRAPER] Extracted {len(reviews)} total reviews")
             
             print(f"[SCRAPER] Title: {title}")
             print(f"[SCRAPER] Content length: {len(content)} characters")
@@ -120,9 +123,12 @@ class WebpageScraper:
             r'myntra\.com',
             r'ajio\.com',
             r'walmart\.com',
+            r'nykaa\.com',
+            r'meesho\.com',
             r'/product/',
             r'/dp/',
             r'/item/',
+            r'/p/',
         ]
         
         for pattern in product_patterns:
@@ -139,23 +145,294 @@ class WebpageScraper:
         
         return any(indicator for indicator in product_indicators)
     
-    def _scrape_reviews(self, soup: BeautifulSoup, url: str) -> List[Dict]:
+    def _scrape_reviews_with_pagination(self, soup: BeautifulSoup, url: str, max_pages: int = 3) -> List[Dict]:
         """
-        Scrape product reviews from e-commerce websites.
-        Supports Amazon, Flipkart, and other major platforms.
+        Scrape product reviews with pagination support.
         """
-        reviews = []
+        all_reviews = []
         
-        # Determine platform and use appropriate scraping strategy
-        if 'amazon' in url.lower():
-            reviews = self._scrape_amazon_reviews(soup)
-        elif 'flipkart' in url.lower():
-            reviews = self._scrape_flipkart_reviews(soup)
+        # Determine platform
+        if 'flipkart' in url.lower():
+            all_reviews = self._scrape_flipkart_with_pagination(url, max_pages)
+        elif 'amazon' in url.lower():
+            all_reviews = self._scrape_amazon_reviews(soup)
+        elif 'myntra' in url.lower():
+            all_reviews = self._scrape_myntra_reviews(soup)
         else:
             # Generic review scraping
-            reviews = self._scrape_generic_reviews(soup)
+            all_reviews = self._scrape_generic_reviews(soup)
+        
+        return all_reviews
+    
+    def _scrape_flipkart_with_pagination(self, url: str, max_pages: int = 3) -> List[Dict]:
+        """
+        Scrape Flipkart reviews with pagination support.
+        """
+        all_reviews = []
+        
+        # Check if this is already a reviews page or product page
+        if '/product-reviews/' in url:
+            base_url = url.split('?')[0]
+        else:
+            # Try to construct reviews URL from product URL
+            # Flipkart pattern: /product-name/product-reviews/itm...
+            if '/p/itm' in url:
+                product_id = re.search(r'/p/(itm[a-zA-Z0-9]+)', url)
+                if product_id:
+                    # Extract base URL and construct reviews URL
+                    parts = url.split('/p/')
+                    base_url = parts[0] + '/product-reviews/' + product_id.group(1)
+                else:
+                    # Fallback to scraping current page only
+                    return self._scrape_flipkart_reviews_from_page(url)
+            else:
+                return self._scrape_flipkart_reviews_from_page(url)
+        
+        print(f"[FLIPKART] Base reviews URL: {base_url}")
+        
+        # Scrape multiple pages
+        for page_num in range(1, max_pages + 1):
+            try:
+                # Construct page URL
+                if page_num == 1:
+                    page_url = base_url
+                else:
+                    page_url = f"{base_url}?page={page_num}"
+                
+                print(f"[FLIPKART] Scraping page {page_num}: {page_url}")
+                
+                response = self.session.get(page_url, headers=self.headers, timeout=15)
+                if response.status_code != 200:
+                    break
+                
+                soup = BeautifulSoup(response.content, 'html.parser')
+                page_reviews = self._parse_flipkart_reviews(soup)
+                
+                if not page_reviews:
+                    print(f"[FLIPKART] No reviews found on page {page_num}, stopping pagination")
+                    break
+                
+                all_reviews.extend(page_reviews)
+                print(f"[FLIPKART] Found {len(page_reviews)} reviews on page {page_num}")
+                
+                # Small delay to avoid rate limiting
+                if page_num < max_pages:
+                    time.sleep(0.5)
+                    
+            except Exception as e:
+                print(f"[FLIPKART] Error on page {page_num}: {e}")
+                break
+        
+        return all_reviews
+    
+    def _scrape_flipkart_reviews_from_page(self, url: str) -> List[Dict]:
+        """Scrape reviews from a single Flipkart page."""
+        try:
+            response = self.session.get(url, headers=self.headers, timeout=15)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            return self._parse_flipkart_reviews(soup)
+        except Exception as e:
+            print(f"[FLIPKART] Error scraping page: {e}")
+            return []
+    
+    def _parse_flipkart_reviews(self, soup: BeautifulSoup) -> List[Dict]:
+        """Parse Flipkart reviews from a page with improved selectors."""
+        reviews = []
+        
+        # Enhanced selectors for Flipkart reviews
+        review_selectors = [
+            # Main review containers
+            ('div', {'class': re.compile(r'_27M-vq|_1AtVbE.*col-12-12|_2vzgPQ')}),
+            ('div', {'class': re.compile(r'_1PBCrt|_3nrCtb')}),
+            # Individual review cards
+            ('div', {'class': re.compile(r'col _2wzgFH|_1U-xdw')}),
+            # Review sections
+            ('div', {'class': 'row'}),
+        ]
+        
+        all_containers = []
+        for tag, attrs in review_selectors:
+            containers = soup.find_all(tag, attrs)
+            if containers:
+                all_containers.extend(containers)
+                
+        print(f"[FLIPKART] Found {len(all_containers)} potential review containers")
+        
+        for container in all_containers[:100]:
+            try:
+                review_data = self._extract_flipkart_review(container)
+                if review_data and review_data.get('body'):
+                    reviews.append(review_data)
+                    
+            except Exception as e:
+                continue
         
         return reviews
+    
+    def _extract_flipkart_review(self, container) -> Optional[Dict]:
+        """Extract review data from a Flipkart review container."""
+        # Extract rating
+        rating = None
+        
+        # Multiple methods to find rating
+        rating_selectors = [
+            ('div', {'class': re.compile(r'_3LWZlK|_1BLPMq|hGSR34')}),
+            ('div', {'class': re.compile(r'_2d4LTz')}),
+            ('span', {'class': re.compile(r'_2_R_DZ')}),
+        ]
+        
+        for tag, attrs in rating_selectors:
+            rating_elem = container.find(tag, attrs)
+            if rating_elem:
+                rating_text = rating_elem.get_text(strip=True)
+                # Extract number from text like "5★" or "5"
+                rating_match = re.search(r'(\d+(?:\.\d+)?)', rating_text)
+                if rating_match:
+                    rating = float(rating_match.group(1))
+                    break
+        
+        # If still no rating, look for star icons
+        if not rating:
+            # Count filled stars (usually have specific class)
+            filled_stars = container.find_all('svg', {'class': re.compile(r'_1wB99o|_3LWZlK')})
+            if filled_stars:
+                rating = len(filled_stars)
+        
+        # Extract review text
+        body = ""
+        text_selectors = [
+            ('div', {'class': re.compile(r't-ZTKy|_6K-7Co')}),
+            ('div', {'class': 'qwjRop'}),
+            ('div', {'class': re.compile(r'_2-N8zT')}),
+            ('p', {}),  # Generic paragraph
+            ('span', {'class': re.compile(r'_2-N8zT')}),
+        ]
+        
+        for tag, attrs in text_selectors:
+            if attrs:
+                body_elem = container.find(tag, attrs)
+            else:
+                body_elem = container.find(tag)
+            
+            if body_elem:
+                body = body_elem.get_text(strip=True)
+                if len(body) > 30:  # Valid review text
+                    break
+        
+        # If still no body, try getting all text
+        if not body or len(body) < 30:
+            full_text = container.get_text(separator=' ', strip=True)
+            # Check if it looks like a review
+            if self._is_review_text(full_text):
+                body = full_text
+        
+        # Extract title
+        title = ""
+        title_selectors = [
+            ('p', {'class': '_2-N8zT'}),
+            ('div', {'class': '_2t8wE0'}),
+        ]
+        
+        for tag, attrs in title_selectors:
+            title_elem = container.find(tag, attrs)
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+                break
+        
+        # Extract reviewer name
+        author = "Anonymous"
+        author_selectors = [
+            ('p', {'class': '_2sc7ZR'}),
+            ('span', {'class': '_2V5EHH'}),
+            ('div', {'class': '_2NsDsF'}),
+        ]
+        
+        for tag, attrs in author_selectors:
+            author_elem = container.find(tag, attrs)
+            if author_elem:
+                author_text = author_elem.get_text(strip=True)
+                # Clean up author name (remove "Certified Buyer" etc)
+                author = author_text.split(',')[0].strip()
+                break
+        
+        # Extract date
+        date = ""
+        date_elem = container.find(text=re.compile(r'\d+\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'))
+        if date_elem:
+            date = date_elem.strip()
+        
+        # Validate and return
+        if body and len(body) > 30:
+            # If no rating found, try to infer from sentiment
+            if not rating:
+                rating = self._infer_rating_from_text(body)
+            
+            return {
+                'rating': rating,
+                'title': title,
+                'body': body,
+                'author': author,
+                'date': date,
+                'helpful': ""
+            }
+        
+        return None
+    
+    def _is_review_text(self, text: str) -> bool:
+        """Check if text looks like a review."""
+        if not text or len(text) < 50 or len(text) > 3000:
+            return False
+        
+        review_keywords = [
+            'good', 'bad', 'excellent', 'poor', 'quality', 'product',
+            'bought', 'purchased', 'using', 'recommend', 'worth',
+            'price', 'value', 'satisfied', 'disappointed', 'love',
+            'hate', 'awesome', 'terrible', 'amazing', 'worst'
+        ]
+        
+        text_lower = text.lower()
+        keyword_count = sum(1 for keyword in review_keywords if keyword in text_lower)
+        
+        return keyword_count >= 2
+    
+    def _infer_rating_from_text(self, text: str) -> float:
+        """Infer rating from review text sentiment."""
+        text_lower = text.lower()
+        
+        # Positive indicators
+        positive_words = [
+            'excellent', 'amazing', 'awesome', 'fantastic', 'great',
+            'good', 'love', 'perfect', 'best', 'satisfied', 'happy',
+            'recommended', 'worth', 'superb', 'wonderful'
+        ]
+        
+        # Negative indicators
+        negative_words = [
+            'bad', 'poor', 'worst', 'terrible', 'awful', 'hate',
+            'disappointed', 'waste', 'useless', 'pathetic', 'horrible',
+            'not recommend', 'defective', 'broken', 'fake'
+        ]
+        
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        
+        # Infer rating based on sentiment
+        if positive_count > negative_count:
+            if positive_count >= 3:
+                return 5.0
+            elif positive_count >= 2:
+                return 4.0
+            else:
+                return 3.5
+        elif negative_count > positive_count:
+            if negative_count >= 3:
+                return 1.0
+            elif negative_count >= 2:
+                return 2.0
+            else:
+                return 2.5
+        else:
+            return 3.0  # Neutral
     
     def _scrape_amazon_reviews(self, soup: BeautifulSoup) -> List[Dict]:
         """Scrape reviews from Amazon product pages."""
@@ -166,7 +443,7 @@ class WebpageScraper:
         
         if not review_containers:
             # Alternative selectors
-            review_containers = soup.find_all('div', class_=re.compile(r'review', re.IGNORECASE))
+            review_containers = soup.find_all('div', class_=re.compile(r'review|a-section\s+review', re.IGNORECASE))
         
         print(f"[AMAZON] Found {len(review_containers)} review containers")
         
@@ -175,7 +452,7 @@ class WebpageScraper:
                 # Extract rating
                 rating_elem = container.find('i', {'data-hook': 'review-star-rating'})
                 if not rating_elem:
-                    rating_elem = container.find('span', class_=re.compile(r'a-icon-star'))
+                    rating_elem = container.find('span', class_=re.compile(r'a-icon-alt'))
                 
                 rating = None
                 if rating_elem:
@@ -209,6 +486,9 @@ class WebpageScraper:
                 helpful = helpful_elem.get_text(strip=True) if helpful_elem else ""
                 
                 if body:  # Only add if we have review text
+                    if not rating:
+                        rating = self._infer_rating_from_text(body)
+                    
                     reviews.append({
                         'rating': rating,
                         'title': title,
@@ -224,97 +504,57 @@ class WebpageScraper:
         
         return reviews
     
-    def _scrape_flipkart_reviews(self, soup: BeautifulSoup) -> List[Dict]:
-        """Scrape reviews from Flipkart product pages with enhanced selectors."""
+    def _scrape_myntra_reviews(self, soup: BeautifulSoup) -> List[Dict]:
+        """Scrape reviews from Myntra product pages."""
         reviews = []
         
-        print(f"[FLIPKART] Attempting to scrape reviews...")
-        
-        # Multiple strategies to find reviews
-        
-        # Strategy 1: Look for review section by common patterns
-        review_sections = [
-            soup.find('div', class_=re.compile(r'review', re.IGNORECASE)),
-            soup.find('div', id=re.compile(r'review', re.IGNORECASE)),
-            soup.find_all('div', class_=re.compile(r'_1AtVbE|col-12-12|_27M-vq', re.IGNORECASE)),
+        # Myntra review selectors
+        review_selectors = [
+            ('div', {'class': re.compile(r'user-review-.*|review-comment')}),
+            ('div', {'class': 'detailed-reviews-userReviewsContainer'}),
+            ('div', {'class': 'user-review'}),
         ]
         
-        # Strategy 2: Find all divs that contain rating patterns
         all_containers = []
-        for section in review_sections:
-            if section:
-                if isinstance(section, list):
-                    all_containers.extend(section)
-                else:
-                    all_containers.append(section)
+        for tag, attrs in review_selectors:
+            containers = soup.find_all(tag, attrs)
+            if containers:
+                all_containers.extend(containers)
         
-        # Strategy 3: Broad search for any element with star ratings
-        if not all_containers:
-            all_containers = soup.find_all(['div', 'article', 'section'], 
-                                          text=re.compile(r'★|⭐|star', re.IGNORECASE))
+        print(f"[MYNTRA] Found {len(all_containers)} review containers")
         
-        print(f"[FLIPKART] Found {len(all_containers)} potential review containers")
-        
-        for container in all_containers[:100]:  # Check more containers
+        for container in all_containers[:50]:
             try:
-                # Extract rating - multiple methods
+                # Extract rating (Myntra uses star count)
                 rating = None
+                stars = container.find_all('span', class_=re.compile(r'icon-star.*filled'))
+                if stars:
+                    rating = len(stars)
                 
-                # Method 1: Look for star rating
-                rating_elem = container.find('div', class_=re.compile(r'_3LWZlK|hGSR34|_1BLPMq|gUuXy-', re.IGNORECASE))
-                if not rating_elem:
-                    rating_elem = container.find('span', class_=re.compile(r'rating|star', re.IGNORECASE))
-                if not rating_elem:
-                    # Look for any element with rating text
-                    rating_elem = container.find(text=re.compile(r'(\d+)\s*★|(\d+)\s*star', re.IGNORECASE))
-                
-                if rating_elem:
-                    rating_text = rating_elem.get_text(strip=True) if hasattr(rating_elem, 'get_text') else str(rating_elem)
-                    rating_match = re.search(r'(\d+)', rating_text)
-                    if rating_match:
-                        rating = float(rating_match.group(1))
-                
-                # Extract review text - multiple methods
+                # Extract review text
                 body = ""
+                text_elem = container.find('div', class_=re.compile(r'user-review-reviewTextWrapper'))
+                if not text_elem:
+                    text_elem = container.find('div', class_='user-review-text')
+                if text_elem:
+                    body = text_elem.get_text(strip=True)
                 
-                # Method 1: Common Flipkart review classes
-                body_elem = container.find('div', class_=re.compile(r't-ZTKy|_6K-7Co|_2-N8zT|ZmyHeo', re.IGNORECASE))
-                if body_elem:
-                    body = body_elem.get_text(strip=True)
-                
-                # Method 2: Look for paragraph tags with substantial text
-                if not body:
-                    paragraphs = container.find_all('p')
-                    for p in paragraphs:
-                        text = p.get_text(strip=True)
-                        if len(text) > 50:  # Substantial text
-                            body = text
-                            break
-                
-                # Method 3: Get all text from container if it looks like a review
-                if not body:
-                    full_text = container.get_text(separator=' ', strip=True)
-                    # Check if it looks like a review (has some review keywords)
-                    review_keywords = ['good', 'bad', 'quality', 'product', 'purchased', 'bought', 'recommend', 'love', 'hate', 'excellent', 'poor', 'satisfied', 'disappointed']
-                    if any(keyword in full_text.lower() for keyword in review_keywords) and 50 < len(full_text) < 2000:
-                        body = full_text
-                
-                # Extract reviewer name
+                # Extract author
                 author = "Anonymous"
-                author_elem = container.find('p', class_=re.compile(r'_2sc7ZR|_2NsDsF|_2V5EHH', re.IGNORECASE))
-                if not author_elem:
-                    author_elem = container.find(['span', 'div'], class_=re.compile(r'name|author|user', re.IGNORECASE))
+                author_elem = container.find('div', class_=re.compile(r'user-review-userName'))
                 if author_elem:
                     author = author_elem.get_text(strip=True)
                 
                 # Extract date
                 date = ""
-                date_elem = container.find(['span', 'p', 'div'], class_=re.compile(r'date|time|_3dgbVa', re.IGNORECASE))
+                date_elem = container.find('div', class_=re.compile(r'user-review-date'))
                 if date_elem:
                     date = date_elem.get_text(strip=True)
                 
-                # Only add if we have meaningful review text
                 if body and len(body) > 30:
+                    if not rating:
+                        rating = self._infer_rating_from_text(body)
+                    
                     reviews.append({
                         'rating': rating,
                         'title': "",
@@ -323,13 +563,11 @@ class WebpageScraper:
                         'date': date,
                         'helpful': ""
                     })
-                    print(f"[FLIPKART] ✓ Extracted review: {len(body)} chars, rating: {rating}")
             
             except Exception as e:
-                print(f"[FLIPKART] Error parsing container: {e}")
+                print(f"[MYNTRA] Error parsing review: {e}")
                 continue
         
-        print(f"[FLIPKART] ✅ Total reviews extracted: {len(reviews)}")
         return reviews
     
     def _scrape_generic_reviews(self, soup: BeautifulSoup) -> List[Dict]:
@@ -364,7 +602,10 @@ class WebpageScraper:
                         if rating_match:
                             rating = float(rating_match.group(1))
                     
-                    if text and len(text) > 30:
+                    if not rating:
+                        rating = self._infer_rating_from_text(text)
+                    
+                    if text and len(text) > 30 and self._is_review_text(text):
                         reviews.append({
                             'rating': rating,
                             'title': "",
@@ -500,18 +741,28 @@ def scrape_webpage(url: str, scrape_reviews: bool = True) -> Dict:
 
 if __name__ == "__main__":
     # Test the scraper
-    test_url = "https://www.amazon.in/dp/B0EXAMPLE"  # Replace with actual product URL
-    result = scrape_webpage(test_url)
+    test_urls = [
+        "https://www.flipkart.com/example-product/p/itmexample",
+        "https://www.amazon.in/dp/B0EXAMPLE",
+        "https://www.myntra.com/example-product"
+    ]
     
-    if result['success']:
-        print(f"\n✓ Title: {result['title']}")
-        print(f"✓ Content length: {len(result['content'])} characters")
-        print(f"✓ Is product page: {result.get('is_product_page', False)}")
-        print(f"✓ Reviews found: {len(result.get('reviews', []))}")
+    for test_url in test_urls:
+        print(f"\n{'='*60}")
+        print(f"Testing: {test_url}")
+        print(f"{'='*60}")
         
-        if result.get('reviews'):
-            print(f"\nSample review:")
-            print(f"Rating: {result['reviews'][0].get('rating')}")
-            print(f"Body: {result['reviews'][0].get('body')[:200]}...")
-    else:
-        print(f"\n✗ Error: {result['error']}")
+        result = scrape_webpage(test_url)
+        
+        if result['success']:
+            print(f"\n✓ Title: {result['title']}")
+            print(f"✓ Content length: {len(result['content'])} characters")
+            print(f"✓ Is product page: {result.get('is_product_page', False)}")
+            print(f"✓ Reviews found: {len(result.get('reviews', []))}")
+            
+            if result.get('reviews'):
+                print(f"\nSample review:")
+                print(f"Rating: {result['reviews'][0].get('rating')}")
+                print(f"Body: {result['reviews'][0].get('body')[:200]}...")
+            else:
+                print(f"\n✗ Error: {result['error']}")
