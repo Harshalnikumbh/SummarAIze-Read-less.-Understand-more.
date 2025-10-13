@@ -29,10 +29,11 @@ def help_page():
 
 @app.route('/summarize', methods=['POST'])
 def summarize():
-    """Enhanced endpoint for webpage and product review summarization."""
+    """Enhanced endpoint for webpage and product review summarization with pagination."""
     try:
         data = request.json
         url = data.get('url')
+        max_pages = data.get('max_pages', 8)  # Default 8 pages for pagination
 
         if not url:
             return jsonify({
@@ -41,53 +42,93 @@ def summarize():
             }), 400
 
         # Check cache (valid for 1 hour)
-        cache_key = url
+        cache_key = f"{url}_{max_pages}"
         if cache_key in cache:
             cached_data = cache[cache_key]
             if time.time() - cached_data['timestamp'] < 3600:
                 print(f"[CACHE] Returning cached result for {url}")
-                return jsonify(cached_data['data'])
+                cached_response = cached_data['data'].copy()
+                cached_response['cached'] = True
+                return jsonify(cached_response)
 
-        # Scrape webpage (with reviews if it's a product page)
+        # Scrape webpage with pagination support
+        print(f"\n{'='*60}")
         print(f"[API] Scraping URL: {url}")
-        scrape_result = scrape_webpage(url, scrape_reviews=True)
+        print(f"[API] Max pages: {max_pages}")
+        print(f"{'='*60}")
+        
+        start_time = time.time()
+        scrape_result = scrape_webpage(url, max_pages=max_pages)
+        scrape_time = time.time() - start_time
         
         if not scrape_result['success']:
             return jsonify({
                 'success': False,
-                'error': scrape_result['error']
+                'error': scrape_result.get('error', 'Failed to scrape webpage')
             }), 400
 
-        # Check if this is a product page with reviews
-        is_product_page = scrape_result.get('is_product_page', False)
+        # Get URL type and reviews
+        url_type = scrape_result.get('url_type', 'webpage')
         reviews = scrape_result.get('reviews', [])
         
-        print(f"[API] Product page: {is_product_page}, Reviews found: {len(reviews)}")
+        print(f"[API] URL Type: {url_type}")
+        print(f"[API] Reviews found: {len(reviews)}")
+        print(f"[API] Scraping time: {scrape_time:.2f}s")
 
-        # Prepare response based on page type
-        if is_product_page and len(reviews) > 0:
-            # Product page with reviews - analyze reviews
+        # Prepare response based on URL type and review availability
+        if url_type in ['review_page', 'product_page'] and len(reviews) > 0:
+            # Product/Review page with reviews - full analysis
             print(f"[API] Analyzing {len(reviews)} reviews...")
-            review_analysis = summarize_reviews_with_analysis(reviews)
+            analysis_start = time.time()
             
-            response_data = {
-                'success': True,
-                'type': 'product',
-                'title': scrape_result['title'],
-                'url': url,
-                'is_product_page': True,
-                'review_count': len(reviews),
-                'brief_summary': review_analysis.get('brief_summary', ''),
-                'detailed_summary': review_analysis.get('detailed_summary', ''),
-                'pros': review_analysis.get('pros', []),
-                'cons': review_analysis.get('cons', []),
-                'stats': review_analysis.get('stats', {}),
-                'metadata': scrape_result.get('metadata', {})
-            }
-        elif is_product_page and len(reviews) == 0:
+            review_analysis = summarize_reviews_with_analysis(reviews, max_reviews=100)
+            
+            analysis_time = time.time() - analysis_start
+            total_time = scrape_time + analysis_time
+            
+            print(f"[API] Analysis time: {analysis_time:.2f}s")
+            print(f"[API] Total time: {total_time:.2f}s")
+            
+            if not review_analysis.get('success', False):
+                # Fallback if analysis fails
+                print("[API] Review analysis failed, falling back to content summary")
+                content = scrape_result['content']
+                summary = summarize_text(content) if content else "Could not analyze reviews."
+                
+                response_data = {
+                    'success': True,
+                    'type': 'webpage',
+                    'url_type': url_type,
+                    'title': scrape_result['title'],
+                    'summary': summary,
+                    'content_length': len(content),
+                    'url': url,
+                    'processing_time': f"{total_time:.2f}s"
+                }
+            else:
+                response_data = {
+                    'success': True,
+                    'type': 'product',
+                    'url_type': url_type,
+                    'title': scrape_result['title'],
+                    'url': url,
+                    'review_count': len(reviews),
+                    'brief_summary': review_analysis.get('brief_summary', ''),
+                    'detailed_summary': review_analysis.get('detailed_summary', ''),
+                    'pros': review_analysis.get('pros', []),
+                    'cons': review_analysis.get('cons', []),
+                    'stats': review_analysis.get('stats', {}),
+                    'metadata': scrape_result.get('metadata', {}),
+                    'scrape_time': f"{scrape_time:.2f}s",
+                    'analysis_time': f"{analysis_time:.2f}s",
+                    'processing_time': f"{total_time:.2f}s"
+                }
+                
+        elif url_type == 'product_page' and len(reviews) == 0:
             # Product page detected but no reviews found
             content = scrape_result['content']
-            print(f"[API] Product page but no reviews found. Summarizing product description...")
+            print(f"[API] Product page but no reviews found")
+            print(f"[API] Summarizing product description ({len(content)} chars)...")
             
             if len(content) > 100:
                 summary = summarize_text(content, max_length=250, min_length=100)
@@ -97,35 +138,49 @@ def summarize():
             response_data = {
                 'success': True,
                 'type': 'product_no_reviews',
+                'url_type': url_type,
                 'title': scrape_result['title'],
                 'summary': summary,
                 'url': url,
-                'is_product_page': True,
                 'review_count': 0,
-                'message': 'Product detected but reviews not found on this page. For Flipkart, try clicking "View All Reviews" and use that URL.',
-                'metadata': scrape_result.get('metadata', {})
+                'message': 'Product detected but reviews not found on this page. For Flipkart, try clicking "View All Reviews" and use that URL. For Amazon, click "See all reviews".',
+                'metadata': scrape_result.get('metadata', {}),
+                'processing_time': f"{scrape_time:.2f}s"
             }
+            
         else:
             # Regular webpage - summarize content
             content = scrape_result['content']
+            
             if len(content) < 100:
                 return jsonify({
                     'success': False,
                     'error': 'Content too short to summarize (less than 100 characters)'
                 }), 400
 
-            print(f"[API] Summarizing webpage content ({len(content)} chars)...")
-            summary = summarize_text(content, max_length=350, min_length=150)
+            print(f"[API] Regular webpage - Summarizing content ({len(content)} chars)...")
+            summary_start = time.time()
+            
+            summary = summarize_text(content, max_length=400, min_length=150)
+            
+            summary_time = time.time() - summary_start
+            total_time = scrape_time + summary_time
+            
+            print(f"[API] Summary time: {summary_time:.2f}s")
+            print(f"[API] Total time: {total_time:.2f}s")
 
             response_data = {
                 'success': True,
                 'type': 'webpage',
+                'url_type': url_type,
                 'title': scrape_result['title'],
                 'summary': summary,
                 'content_length': len(content),
                 'url': url,
-                'is_product_page': False,
-                'metadata': scrape_result.get('metadata', {})
+                'metadata': scrape_result.get('metadata', {}),
+                'scrape_time': f"{scrape_time:.2f}s",
+                'summary_time': f"{summary_time:.2f}s",
+                'processing_time': f"{total_time:.2f}s"
             }
 
         # Cache result
@@ -135,11 +190,14 @@ def summarize():
         }
 
         print(f"[API] ✅ Successfully processed: {response_data['type']}")
+        print(f"{'='*60}\n")
         return jsonify(response_data)
 
     except Exception as e:
         import traceback
+        print(f"\n[API] ❌ ERROR:")
         traceback.print_exc()
+        print(f"{'='*60}\n")
         return jsonify({
             'success': False,
             'error': f'Server error: {str(e)}'
@@ -147,8 +205,42 @@ def summarize():
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'healthy', 'model_loaded': True}), 200
+    """Health check endpoint."""
+    return jsonify({
+        'status': 'healthy',
+        'model_loaded': True,
+        'cache_size': len(cache)
+    }), 200
+
+@app.route('/clear-cache', methods=['POST'])
+def clear_cache():
+    """Clear the cache."""
+    global cache
+    cache_size = len(cache)
+    cache = {}
+    return jsonify({
+        'success': True,
+        'message': f'Cleared {cache_size} cached items'
+    })
 
 if __name__ == '__main__':
+    print("\n" + "="*60)
+    print("🚀 SummarAIze Flask Server Starting...")
+    print("="*60)
+    print("Features:")
+    print("  ✓ Enhanced pagination support (configurable pages)")
+    print("  ✓ Intelligent URL detection (webpage/product/review)")
+    print("  ✓ Advanced BART summarization")
+    print("  ✓ Comprehensive review analysis")
+    print("  ✓ Pros/cons extraction")
+    print("  ✓ Smart caching (1 hour)")
+    print("  ✓ Performance metrics")
+    print("="*60)
+    print("Endpoints:")
+    print("  POST /summarize - Main endpoint")
+    print("  GET  /health    - Health check")
+    print("  POST /clear-cache - Clear cache")
+    print("="*60 + "\n")
+    
     # Disabled reloader to prevent crashes from TensorFlow file changes
     app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)

@@ -47,12 +47,20 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Response data:', data);
             
             if (data.success) {
-                // Check if it's a product page with reviews or regular webpage
-                if (data.type === 'product') {
+                // Smart display logic based on response type
+                const responseType = data.type || 'webpage';
+                const hasReviews = data.review_count > 0;
+                
+                console.log('Response Type:', responseType, 'Has Reviews:', hasReviews);
+                
+                if (responseType === 'product' && hasReviews) {
+                    // Product with reviews - show full analysis
                     showProductReviewAnalysis(data);
-                } else if (data.type === 'product_no_reviews') {
+                } else if (responseType === 'product_no_reviews') {
+                    // Product page without reviews - show warning
                     showProductNoReviews(data);
                 } else {
+                    // Regular webpage - show simple summary
                     showWebpageSummary(data);
                 }
             } else {
@@ -77,13 +85,6 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         `;
         summaryBox.style.display = 'block';
-        
-        if (!document.getElementById('spinner-style')) {
-            const style = document.createElement('style');
-            style.id = 'spinner-style';
-            style.textContent = '@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }';
-            document.head.appendChild(style);
-        }
     }
 
     function showProductNoReviews(data) {
@@ -111,7 +112,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         ${escapeHtml(data.message || 'Reviews may be loaded dynamically or on a separate page.')}
                     </p>
                     <p style="margin:0;line-height:1.8;color:#6b7280;font-size:15px;">
-                        <strong>For Flipkart:</strong> Click on "View All Reviews" or "Ratings & Reviews" button on the product page, then copy that URL.
+                        <strong>For Flipkart:</strong> Click "View All Reviews" button on the product page and copy that URL.<br>
+                        <strong>For Amazon:</strong> Click "See all reviews" link and use that URL.
                     </p>
                 </div>
 
@@ -125,20 +127,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     <p style="margin:0;line-height:1.8;color:#4b5563;font-size:16px;text-align:justify;">${escapeHtml(data.summary)}</p>
                 </div>
 
-                <!-- Suggested Amazon Alternative -->
-                <div style="background:#eff6ff;padding:20px;border-radius:12px;margin-top:24px;border:2px dashed #3b82f6;">
-                    <p style="margin:0;color:#1e40af;font-size:15px;line-height:1.6;">
-                        <strong>💡 Tip:</strong> Amazon product pages usually work better for review analysis. Try searching for a similar product on Amazon India.
-                    </p>
-                </div>
-
             </div>
         `;
         
         summaryBox.style.display = 'block';
-        setTimeout(() => {
-            summaryBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
+        scrollToSummary();
     }
 
     function showProductReviewAnalysis(data) {
@@ -148,13 +141,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const stats = data.stats || {};
         const avgRating = stats.average_rating || 0;
         const totalReviews = stats.total_reviews || 0;
+        const reviewCount = data.review_count || 0;
         const posPercentage = stats.positive_percentage || 0;
         const negPercentage = stats.negative_percentage || 0;
 
-        // Generate star rating HTML
         const starRating = generateStarRating(avgRating);
-
-        // Generate rating distribution bars
         const ratingBars = generateRatingBars(stats.rating_distribution || {});
 
         summaryBox.innerHTML = `
@@ -172,31 +163,31 @@ document.addEventListener('DOMContentLoaded', function() {
                 <!-- Stats Overview -->
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
                     
-                    <div style="background:white;padding:20px;border-radius:12px;border:2px solid #fbbf24;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <div class="review-stat-card" style="background:white;padding:20px;border-radius:12px;border:2px solid #fbbf24;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size:14px;color:#92400e;font-weight:600;margin-bottom:8px;">⭐ Average Rating</div>
                         <div style="font-size:32px;font-weight:700;color:#92400e;margin-bottom:8px;">${avgRating.toFixed(1)}/5</div>
                         <div>${starRating}</div>
                     </div>
 
-                    <div style="background:white;padding:20px;border-radius:12px;border:2px solid #3b82f6;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <div class="review-stat-card" style="background:white;padding:20px;border-radius:12px;border:2px solid #3b82f6;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size:14px;color:#1e40af;font-weight:600;margin-bottom:8px;">📊 Total Reviews</div>
                         <div style="font-size:32px;font-weight:700;color:#1e40af;">${totalReviews}</div>
-                        <div style="font-size:13px;color:#6b7280;margin-top:4px;">${data.review_count} analyzed</div>
+                        <div style="font-size:13px;color:#6b7280;margin-top:4px;">${reviewCount} analyzed</div>
                     </div>
 
-                    <div style="background:white;padding:20px;border-radius:12px;border:2px solid #22c55e;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <div class="review-stat-card" style="background:white;padding:20px;border-radius:12px;border:2px solid #22c55e;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size:14px;color:#065f46;font-weight:600;margin-bottom:8px;">👍 Positive</div>
                         <div style="font-size:32px;font-weight:700;color:#065f46;">${posPercentage.toFixed(0)}%</div>
                         <div style="background:#dcfce7;height:6px;border-radius:3px;margin-top:8px;overflow:hidden;">
-                            <div style="background:#22c55e;height:100%;width:${posPercentage}%;"></div>
+                            <div class="progress-bar" style="background:#22c55e;height:100%;width:${posPercentage}%;"></div>
                         </div>
                     </div>
 
-                    <div style="background:white;padding:20px;border-radius:12px;border:2px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                    <div class="review-stat-card" style="background:white;padding:20px;border-radius:12px;border:2px solid #ef4444;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
                         <div style="font-size:14px;color:#991b1b;font-weight:600;margin-bottom:8px;">👎 Negative</div>
                         <div style="font-size:32px;font-weight:700;color:#991b1b;">${negPercentage.toFixed(0)}%</div>
                         <div style="background:#fee2e2;height:6px;border-radius:3px;margin-top:8px;overflow:hidden;">
-                            <div style="background:#ef4444;height:100%;width:${negPercentage}%;"></div>
+                            <div class="progress-bar" style="background:#ef4444;height:100%;width:${negPercentage}%;"></div>
                         </div>
                     </div>
 
@@ -221,7 +212,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         ${data.pros && data.pros.length > 0 ? `
                             <ul style="margin:0;padding:0;list-style:none;">
                                 ${data.pros.map(pro => `
-                                    <li style="padding:12px;margin-bottom:8px;background:#f0fdf4;border-radius:8px;border-left:3px solid #22c55e;color:#065f46;font-size:15px;line-height:1.6;">
+                                    <li class="pros-cons-item" style="padding:12px;margin-bottom:8px;background:#f0fdf4;border-radius:8px;border-left:3px solid #22c55e;color:#065f46;font-size:15px;line-height:1.6;">
                                         ${escapeHtml(pro)}
                                     </li>
                                 `).join('')}
@@ -237,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         ${data.cons && data.cons.length > 0 ? `
                             <ul style="margin:0;padding:0;list-style:none;">
                                 ${data.cons.map(con => `
-                                    <li style="padding:12px;margin-bottom:8px;background:#fef2f2;border-radius:8px;border-left:3px solid #ef4444;color:#991b1b;font-size:15px;line-height:1.6;">
+                                    <li class="pros-cons-item" style="padding:12px;margin-bottom:8px;background:#fef2f2;border-radius:8px;border-left:3px solid #ef4444;color:#991b1b;font-size:15px;line-height:1.6;">
                                         ${escapeHtml(con)}
                                     </li>
                                 `).join('')}
@@ -284,9 +275,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         summaryBox.style.display = 'block';
-        setTimeout(() => {
-            summaryBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
+        scrollToSummary();
     }
 
     function showWebpageSummary(data) {
@@ -302,16 +291,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <h4 style="margin:0 0 16px 0;font-size:18px;color:#374151;font-weight:500;">${escapeHtml(data.title)}</h4>
                     <p style="margin:0;line-height:1.8;color:#4b5563;font-size:16px;text-align:justify;">${escapeHtml(data.summary)}</p>
-                    <div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:14px;color:#9ca3af;">
-                        Content length: ${data.content_length} characters
-                    </div>
+                    ${data.content_length ? `
+                        <div style="margin-top:20px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:14px;color:#9ca3af;">
+                            Content length: ${data.content_length} characters
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
         summaryBox.style.display = 'block';
-        setTimeout(() => {
-            summaryBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 100);
+        scrollToSummary();
     }
     
     function showError(message) {
@@ -319,7 +308,7 @@ document.addEventListener('DOMContentLoaded', function() {
         summarizeBtn.textContent = 'Try Again';
         
         summaryBox.innerHTML = `
-            <div style="max-width:700px;margin:0 auto;padding:24px;">
+            <div class="error-message" style="max-width:700px;margin:0 auto;padding:24px;">
                 <div style="background:#fef2f2;border:2px solid #ef4444;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(239,68,68,0.1);">
                     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
                         <span style="font-size:32px;">⚠️</span>
@@ -339,7 +328,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let stars = '';
         for (let i = 0; i < fullStars; i++) stars += '⭐';
-        if (hasHalfStar) stars += '⭐'; // Using full star for simplicity
+        if (hasHalfStar) stars += '⭐';
         for (let i = 0; i < emptyStars; i++) stars += '☆';
         
         return `<span style="font-size:20px;letter-spacing:2px;">${stars}</span>`;
@@ -368,11 +357,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span style="font-size:13px;color:#6b7280;">${count} reviews (${percentage}%)</span>
                     </div>
                     <div style="background:#f3f4f6;height:10px;border-radius:5px;overflow:hidden;">
-                        <div style="background:${rating.color};height:100%;width:${percentage}%;transition:width 0.3s ease;"></div>
+                        <div class="progress-bar" style="background:${rating.color};height:100%;width:${percentage}%;transition:width 0.3s ease;"></div>
                     </div>
                 </div>
             `;
         }).join('');
+    }
+    
+    function scrollToSummary() {
+        setTimeout(() => {
+            summaryBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
     }
     
     function isValidUrl(string) {
