@@ -39,8 +39,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`${API_URL}/summarize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: url })
-            });
+                 body: JSON.stringify({ 
+                url: url,
+                max_pages: 15  // 15 max page!
+            })
+        });
             
             console.log('Response status:', response.status);
             const data = await response.json();

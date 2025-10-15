@@ -405,10 +405,12 @@ details[open] {
 
 details summary {
   cursor: pointer;
-  user-select: none;
+  -webkit-user-select: none; /* Safari / iOS */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* Old Edge / IE */
+  user-select: none;         /* Standard */
   transition: color 0.2s ease;
 }
-
 details summary:hover {
   color: #22c55e;
 }

@@ -1,15 +1,15 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from scraper import scrape_webpage
-from summarizer import summarize_text, summarize_reviews_with_analysis, load_model
+from summarizer import summarize_text, summarize_reviews_with_analysis, load_models
 import time
 
 app = Flask(__name__)
 CORS(app)
 
-# Pre-load the model when server starts
-print("\n🚀 Starting server and loading ML model...")
-load_model()
+# Pre-load the models when server starts
+print("\n🚀 Starting server and loading ML models...")
+load_models()  # Now loads both T5 and Llama
 print("✅ Server ready!\n")
 
 # Simple cache to avoid re-scraping
@@ -29,11 +29,11 @@ def help_page():
 
 @app.route('/summarize', methods=['POST'])
 def summarize():
-    """Enhanced endpoint for webpage and product review summarization with pagination."""
+    """Enhanced endpoint with MULTI-STAGE processing and 30-page pagination."""
     try:
         data = request.json
         url = data.get('url')
-        max_pages = data.get('max_pages', 8)  # Default 8 pages for pagination
+        max_pages = data.get('max_pages', 30)  # INCREASED TO 30 PAGES FOR BETTER QUALITY
 
         if not url:
             return jsonify({
@@ -51,10 +51,10 @@ def summarize():
                 cached_response['cached'] = True
                 return jsonify(cached_response)
 
-        # Scrape webpage with pagination support
+        # Scrape webpage with increased pagination
         print(f"\n{'='*60}")
         print(f"[API] Scraping URL: {url}")
-        print(f"[API] Max pages: {max_pages}")
+        print(f"[API] Max pages: {max_pages} (Multi-stage processing enabled)")
         print(f"{'='*60}")
         
         start_time = time.time()
@@ -77,11 +77,12 @@ def summarize():
 
         # Prepare response based on URL type and review availability
         if url_type in ['review_page', 'product_page'] and len(reviews) > 0:
-            # Product/Review page with reviews - full analysis
-            print(f"[API] Analyzing {len(reviews)} reviews...")
+            # Product/Review page with reviews - full multi-stage analysis
+            print(f"[API] Analyzing {len(reviews)} reviews with MULTI-STAGE pipeline (T5→Llama)...")
             analysis_start = time.time()
             
-            review_analysis = summarize_reviews_with_analysis(reviews, max_reviews=100)
+            # Now using 200 reviews with multi-stage processing
+            review_analysis = summarize_reviews_with_analysis(reviews, max_reviews=200)
             
             analysis_time = time.time() - analysis_start
             total_time = scrape_time + analysis_time
@@ -121,7 +122,8 @@ def summarize():
                     'metadata': scrape_result.get('metadata', {}),
                     'scrape_time': f"{scrape_time:.2f}s",
                     'analysis_time': f"{analysis_time:.2f}s",
-                    'processing_time': f"{total_time:.2f}s"
+                    'processing_time': f"{total_time:.2f}s",
+                    'processing_mode': 'multi-stage (T5→Llama)'
                 }
                 
         elif url_type == 'product_page' and len(reviews) == 0:
@@ -149,7 +151,7 @@ def summarize():
             }
             
         else:
-            # Regular webpage - summarize content
+            # Regular webpage - summarize content with multi-stage processing
             content = scrape_result['content']
             
             if len(content) < 100:
@@ -158,7 +160,7 @@ def summarize():
                     'error': 'Content too short to summarize (less than 100 characters)'
                 }), 400
 
-            print(f"[API] Regular webpage - Summarizing content ({len(content)} chars)...")
+            print(f"[API] Regular webpage - Multi-stage summarization ({len(content)} chars)...")
             summary_start = time.time()
             
             summary = summarize_text(content, max_length=400, min_length=150)
@@ -180,7 +182,8 @@ def summarize():
                 'metadata': scrape_result.get('metadata', {}),
                 'scrape_time': f"{scrape_time:.2f}s",
                 'summary_time': f"{summary_time:.2f}s",
-                'processing_time': f"{total_time:.2f}s"
+                'processing_time': f"{total_time:.2f}s",
+                'processing_mode': 'multi-stage (T5→Llama)'
             }
 
         # Cache result
@@ -206,9 +209,12 @@ def summarize():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint."""
+    from summarizer import T5_READY, LLAMA_READY
     return jsonify({
         'status': 'healthy',
-        'model_loaded': True,
+        't5_loaded': T5_READY,
+        'llama_loaded': LLAMA_READY,
+        'processing_mode': 'multi-stage' if (T5_READY and LLAMA_READY) else 't5-only' if T5_READY else 'unavailable',
         'cache_size': len(cache)
     }), 200
 
@@ -228,19 +234,19 @@ if __name__ == '__main__':
     print("🚀 SummarAIze Flask Server Starting...")
     print("="*60)
     print("Features:")
-    print("  ✓ Enhanced pagination support (configurable pages)")
-    print("  ✓ Intelligent URL detection (webpage/product/review)")
-    print("  ✓ Advanced BART summarization")
-    print("  ✓ Comprehensive review analysis")
-    print("  ✓ Pros/cons extraction")
+    print("  ✓ MULTI-STAGE PROCESSING (T5 → Llama)")
+    print("  ✓ Enhanced pagination (30 pages)")
+    print("  ✓ Stage 1: FLAN-T5 extraction")
+    print("  ✓ Stage 2: Llama human-like refinement")
+    print("  ✓ Analyzes up to 200 reviews per product")
+    print("  ✓ Ultra-aggressive text cleaning")
+    print("  ✓ Intelligent URL detection")
     print("  ✓ Smart caching (1 hour)")
-    print("  ✓ Performance metrics")
     print("="*60)
     print("Endpoints:")
-    print("  POST /summarize - Main endpoint")
-    print("  GET  /health    - Health check")
-    print("  POST /clear-cache - Clear cache")
+    print("  POST /summarize    - Main endpoint")
+    print("  GET  /health       - Health check (shows T5/Llama status)")
+    print("  POST /clear-cache  - Clear cache")
     print("="*60 + "\n")
     
-    # Disabled reloader to prevent crashes from TensorFlow file changes
     app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
