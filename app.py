@@ -247,7 +247,7 @@ def clear_cache():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🚀 SummarAIze Flask Server Starting...")
+    print("🚀 SummarAIze Flask Server Starting on Google Colab...")
     print("="*60)
     print("Features:")
     print("  ✓ MULTI-STAGE PROCESSING (T5 → Llama)")
@@ -263,6 +263,48 @@ if __name__ == '__main__':
     print("  POST /summarize    - Main endpoint")
     print("  GET  /health       - Health check (shows T5/Llama status)")
     print("  POST /clear-cache  - Clear cache")
-    print("="*60 + "\n")
+    print("="*60)
     
-    app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
+    # Check if running in Colab
+    try:
+        import google.colab
+        IN_COLAB = True
+        print("\n🔍 Google Colab detected - Setting up ngrok tunnel...")
+    except:
+        IN_COLAB = False
+        print("\n⚠️  Not in Google Colab - Running locally...")
+    
+    if IN_COLAB:
+        try:
+            # Install pyngrok if not already installed
+            import subprocess
+            import sys
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pyngrok"])
+            
+            from pyngrok import ngrok
+        
+            ngrok.set_auth_token("cr_34Gqp5Ar7KejAvRNPR6Zgc9xzV2")
+            
+            # Open a ngrok tunnel to the Flask app
+            public_url = ngrok.connect(5000)
+            print("\n" + "="*60)
+            print("✅ NGROK TUNNEL ACTIVE!")
+            print("="*60)
+            print(f"🌐 Public URL: {public_url}")
+            print(f"🌐 Alternative: {public_url.replace('http://', 'https://')}")
+            print("="*60)
+            print("📱 Use this URL to access your app from anywhere!")
+            print("="*60 + "\n")
+            
+            # Run the Flask app
+            app.run(port=5000, use_reloader=False)
+            
+        except Exception as e:
+            print(f"\n❌ Error setting up ngrok: {e}")
+            print("💡 Tip: You may need to set up an ngrok auth token")
+            print("   Visit: https://dashboard.ngrok.com/get-started/your-authtoken")
+            print("\nFalling back to local server...\n")
+            app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
+    else:
+        # Running locally
+        app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
