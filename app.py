@@ -265,4 +265,4 @@ if __name__ == '__main__':
     print("  POST /clear-cache  - Clear cache")
     print("="*60 + "\n")
     
-    app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
+    app.run(debug=True, port=8000, host='0.0.0.0', use_reloader=False)
