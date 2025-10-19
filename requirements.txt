@@ -9,7 +9,8 @@ lxml==5.1.0
 
 # Machine Learning & NLP
 transformers==4.36.2
-torch==2.1.2
+torch==2.2.0
+torchvision==0.18.0  # match torch version
 sentencepiece==0.1.99
 
 # Utilities
