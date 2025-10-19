@@ -39,31 +39,27 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch(`${API_URL}/summarize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ 
-                url: url,
-                max_pages: 15  // 15 max page!
-            })
-        });
+                body: JSON.stringify({ 
+                    url: url,
+                    max_pages: 10
+                })
+            });
             
             console.log('Response status:', response.status);
             const data = await response.json();
             console.log('Response data:', data);
             
             if (data.success) {
-                // Smart display logic based on response type
                 const responseType = data.type || 'webpage';
                 const hasReviews = data.review_count > 0;
                 
                 console.log('Response Type:', responseType, 'Has Reviews:', hasReviews);
                 
                 if (responseType === 'product' && hasReviews) {
-                    // Product with reviews - show full analysis
                     showProductReviewAnalysis(data);
                 } else if (responseType === 'product_no_reviews') {
-                    // Product page without reviews - show warning
                     showProductNoReviews(data);
                 } else {
-                    // Regular webpage - show simple summary
                     showWebpageSummary(data);
                 }
             } else {
@@ -242,40 +238,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 <!-- Rating Distribution -->
-                <div style="background:white;padding:24px;border-radius:12px;border:2px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.05);margin-bottom:24px;">
+                <div style="background:white;padding:24px;border-radius:12px;border:2px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
                     <h3 style="margin:0 0 20px 0;font-size:20px;color:#374151;font-weight:600;display:flex;align-items:center;gap:8px;">
                         <span>📊</span> Rating Distribution
                     </h3>
                     ${ratingBars}
                 </div>
 
-                <!-- Detailed Summary (Collapsible) -->
-                <div style="background:white;padding:24px;border-radius:12px;border:2px solid #cbd5e1;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
-                    <details>
-                        <summary style="cursor:pointer;font-size:18px;font-weight:600;color:#475569;padding:8px 0;list-style:none;display:flex;align-items:center;gap:8px;">
-                            <span style="transition:transform 0.2s;">▶</span> Detailed Analysis
-                        </summary>
-                        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;">
-                            <p style="margin:0;line-height:1.8;color:#475569;font-size:15px;">${escapeHtml(data.detailed_summary)}</p>
-                        </div>
-                    </details>
-                </div>
-
             </div>
         `;
-
-        // Add rotation animation for details arrow
-        const detailsElements = summaryBox.querySelectorAll('details');
-        detailsElements.forEach(details => {
-            details.addEventListener('toggle', function() {
-                const arrow = this.querySelector('summary span');
-                if (this.open) {
-                    arrow.style.transform = 'rotate(90deg)';
-                } else {
-                    arrow.style.transform = 'rotate(0deg)';
-                }
-            });
-        });
 
         summaryBox.style.display = 'block';
         scrollToSummary();

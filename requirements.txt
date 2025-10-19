@@ -1,0 +1,17 @@
+# Web Framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Web Scraping
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==5.1.0
+
+# Machine Learning & NLP
+transformers==4.36.2
+torch==2.1.2
+sentencepiece==0.1.99
+
+# Utilities
+Werkzeug==3.0.1
+
