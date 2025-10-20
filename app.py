@@ -3,7 +3,6 @@ from flask_cors import CORS
 from scraper import scrape_webpage
 from summarizer import summarize_text, summarize_reviews_with_analysis, load_models
 import time
-import socket
 
 app = Flask(__name__)
 CORS(app)
@@ -15,14 +14,6 @@ print("✅ Server ready!\n")
 
 # Simple cache to avoid re-scraping
 cache = {}
-
-def find_free_port():
-    """Find a free port to use."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        s.listen(1)
-        port = s.getsockname()[1]
-    return port
 
 @app.route('/', methods=['GET'])
 def index():
@@ -272,76 +263,6 @@ if __name__ == '__main__':
     print("  POST /summarize    - Main endpoint")
     print("  GET  /health       - Health check (shows T5/Llama status)")
     print("  POST /clear-cache  - Clear cache")
-    print("="*60)
+    print("="*60 + "\n")
     
-    # Check if running in Colab
-    try:
-        import google.colab
-        IN_COLAB = True
-        print("\n🔍 Google Colab detected - Setting up ngrok tunnel...")
-    except:
-        IN_COLAB = False
-        print("\n⚠️  Not in Google Colab - Running locally...")
-    
-    if IN_COLAB:
-        try:
-            # Install pyngrok if not already installed
-            import subprocess
-            import sys
-            
-            print("📦 Installing pyngrok...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pyngrok"])
-            
-            from pyngrok import ngrok
-            
-            # Kill any existing ngrok tunnels
-            ngrok.kill()
-            
-            # Find a free port
-            port = find_free_port()
-            print(f"🔌 Using port: {port}")
-
-            ngrok.set_auth_token("cr_34Gqp5Ar7KejAvRNPR6Zgc9xzV2")
-            
-            # Open a ngrok tunnel to the Flask app
-            print("🌐 Creating ngrok tunnel...")
-            public_url = ngrok.connect(port)
-            
-            print("\n" + "="*60)
-            print("✅ NGROK TUNNEL ACTIVE!")
-            print("="*60)
-            print(f"🌐 Public URL: {public_url}")
-            print(f"🌐 HTTPS URL: {str(public_url).replace('http://', 'https://')}")
-            print("="*60)
-            print("📱 Copy this URL and paste it in your browser!")
-            print("💡 The tunnel will stay active as long as this cell runs")
-            print("="*60 + "\n")
-            
-            # Get all active tunnels
-            tunnels = ngrok.get_tunnels()
-            if tunnels:
-                print("Active tunnels:")
-                for tunnel in tunnels:
-                    print(f"  • {tunnel.public_url}")
-                print()
-            
-            # Run the Flask app (without debug mode to avoid reloader issues)
-            print(f"🚀 Starting Flask server on port {port}...\n")
-            app.run(port=port, use_reloader=False, threaded=True)
-            
-        except Exception as e:
-            print(f"\n❌ Error setting up ngrok: {e}")
-            print("💡 Tip: If you keep getting errors, try:")
-            print("   1. Restart the Colab runtime")
-            print("   2. Get an ngrok auth token from: https://dashboard.ngrok.com")
-            print("   3. Uncomment line 281 and add your token\n")
-            
-            # Try to run without ngrok as fallback
-            print("Attempting to run without ngrok (local only)...\n")
-            port = find_free_port()
-            app.run(port=port, host='0.0.0.0', use_reloader=False)
-    else:
-        # Running locally
-        port = find_free_port()
-        print(f"\n🔌 Using port: {port}")
-        app.run(debug=True, port=port, host='0.0.0.0', use_reloader=False)
+    app.run(debug=True, port=5000, host='0.0.0.0', use_reloader=False)
