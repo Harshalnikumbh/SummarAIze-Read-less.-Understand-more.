@@ -9,6 +9,7 @@ from urllib.parse import urlparse, parse_qs
 class WebpageScraper:
     """
     Enhanced webpage scraper with improved review quality and noise filtering.
+    Now includes better content type detection and metadata extraction.
     """
 
     def __init__(self):
@@ -24,6 +25,7 @@ class WebpageScraper:
     def scrape(self, url: str, max_pages: int = 8) -> Dict:
         """
         Intelligently scrape webpage - detects if it's a review page or regular webpage.
+        Returns content_type for better summarization.
         """
         try:
             print(f"\n[SCRAPER] Fetching URL: {url}")
@@ -40,7 +42,10 @@ class WebpageScraper:
 
             title = self._get_title(soup)
             content = self._get_content(soup)
-            metadata = self._get_metadata(soup)
+            metadata = self._get_metadata(soup, url)
+
+            # NEW: Map URL type to content type for summarizer
+            content_type = self._map_url_type_to_content_type(url_type, content, url)
 
             result = {
                 'success': True,
@@ -49,18 +54,19 @@ class WebpageScraper:
                 'metadata': metadata,
                 'url': url,
                 'url_type': url_type,
+                'content_type': content_type,  # NEW: For summarizer
                 'reviews': []
             }
 
             if url_type in ['review_page', 'product_page']:
                 reviews = self._scrape_reviews_with_pagination(soup, url, max_pages)
-                # Clean and deduplicate reviews
                 reviews = self._clean_and_deduplicate_reviews(reviews)
                 result['reviews'] = reviews
                 print(f"[SCRAPER] Extracted {len(reviews)} clean, unique reviews")
 
             print(f"[SCRAPER] Title: {title}")
             print(f"[SCRAPER] Content length: {len(content)} characters")
+            print(f"[SCRAPER] Content Type: {content_type}")
 
             return result
 
@@ -79,6 +85,70 @@ class WebpageScraper:
                 'url': url
             }
 
+    def _map_url_type_to_content_type(self, url_type: str, content: str, url: str) -> str:
+        """
+        NEW: Map URL type to content type for better summarization.
+        Uses URL patterns and content analysis.
+        """
+        if url_type in ['review_page', 'product_page']:
+            return 'product_review'
+        
+        # For regular webpages, analyze URL and content
+        url_lower = url.lower()
+        
+        # Check for news domains and patterns
+        news_indicators = [
+            'news', 'article', 'story', 'breaking', 'report',
+            'bbc.com', 'cnn.com', 'reuters.com', 'nytimes.com',
+            'theguardian.com', 'timesofindia.com', 'hindustantimes.com',
+            'indianexpress.com', 'ndtv.com', 'thehindu.com',
+            '/article/', '/news/', '/story/', '/breaking-'
+        ]
+        
+        if any(indicator in url_lower for indicator in news_indicators):
+            print(f"[SCRAPER] News article detected from URL")
+            return 'news_article'
+        
+        # Check for technical documentation patterns
+        tech_indicators = [
+            'docs', 'documentation', 'api', 'guide', 'tutorial',
+            'github.com', 'readthedocs', 'developer',
+            '/docs/', '/api/', '/reference/', '/guide/'
+        ]
+        
+        if any(indicator in url_lower for indicator in tech_indicators):
+            print(f"[SCRAPER] Technical documentation detected from URL")
+            return 'technical_doc'
+        
+        # Analyze content if URL doesn't give clear signal
+        return self._detect_content_type_from_text(content)
+
+    def _detect_content_type_from_text(self, text: str) -> str:
+        """
+        NEW: Quick content type detection from text (lightweight version).
+        """
+        if not text or len(text) < 100:
+            return 'general_webpage'
+        
+        text_lower = text.lower()
+        
+        # News keywords
+        news_score = sum(1 for kw in ['reported', 'according to', 'officials', 
+                                       'statement', 'sources', 'announced', 'confirmed']
+                        if kw in text_lower)
+        
+        # Technical keywords
+        tech_score = sum(1 for kw in ['function', 'api', 'parameter', 'method',
+                                       'installation', 'configuration', 'syntax']
+                        if kw in text_lower)
+        
+        if news_score >= 3:
+            return 'news_article'
+        elif tech_score >= 3:
+            return 'technical_doc'
+        
+        return 'general_webpage'
+
     def _clean_and_deduplicate_reviews(self, reviews: List[Dict]) -> List[Dict]:
         """Remove duplicates and clean review data."""
         seen_bodies = set()
@@ -87,30 +157,24 @@ class WebpageScraper:
         for review in reviews:
             body = review.get('body', '').strip()
             
-            # Skip if empty or too short
             if not body or len(body) < 30:
                 continue
             
-            # Clean the body text
             body = self._clean_review_text(body)
             
-            # Skip if we've seen this exact review
             if body in seen_bodies:
                 continue
             
-            # Check for near-duplicates (> 80% similarity)
             if self._is_near_duplicate(body, seen_bodies):
                 continue
             
             seen_bodies.add(body)
             review['body'] = body
             
-            # Clean other fields
             review['title'] = review.get('title', '').strip()
             review['author'] = review.get('author', 'Anonymous').strip()
             review['date'] = review.get('date', '').strip()
             
-            # Ensure rating is valid
             rating = review.get('rating', 3.0)
             if not isinstance(rating, (int, float)) or rating < 1 or rating > 5:
                 rating = 3.0
@@ -122,7 +186,6 @@ class WebpageScraper:
 
     def _clean_review_text(self, text: str) -> str:
         """Clean review text by removing noise patterns."""
-        # Remove common noise patterns
         noise_patterns = [
             r'READ MORE',
             r'Read More',
@@ -146,13 +209,8 @@ class WebpageScraper:
         for pattern in noise_patterns:
             text = re.sub(pattern, '', text, flags=re.IGNORECASE)
         
-        # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text)
-        
-        # Remove URLs
         text = re.sub(r'http[s]?://\S+', '', text)
-        
-        # Remove email addresses
         text = re.sub(r'\S+@\S+', '', text)
         
         return text.strip()
@@ -164,7 +222,6 @@ class WebpageScraper:
         for seen in seen_texts:
             seen_words = set(seen.lower().split())
             
-            # Calculate Jaccard similarity
             if len(text_words) == 0 or len(seen_words) == 0:
                 continue
             
@@ -181,7 +238,6 @@ class WebpageScraper:
         """Detect if URL is a review page, product page, or regular webpage."""
         url_lower = url.lower()
 
-        # Check for explicit review page patterns
         review_page_patterns = [
             r'/product-reviews/',
             r'/customer-reviews/',
@@ -193,7 +249,6 @@ class WebpageScraper:
                 print(f"[DETECTION] Review page detected by URL pattern: {pattern}")
                 return 'review_page'
 
-        # Check for product page patterns
         product_patterns = [
             r'amazon\.(com|in|co\.uk)/.*/dp/',
             r'flipkart\.com/.*/p/',
@@ -207,7 +262,6 @@ class WebpageScraper:
                 print(f"[DETECTION] Product page detected by URL pattern: {pattern}")
                 return 'product_page'
 
-        # Check for product schema
         product_schema = soup.find(attrs={'itemtype': re.compile(r'Product', re.IGNORECASE)})
         if product_schema:
             print(f"[DETECTION] Product page detected by schema")
@@ -257,7 +311,7 @@ class WebpageScraper:
                 all_reviews.extend(page_reviews)
                 print(f"[FLIPKART] Page {page}: Found {len(page_reviews)} reviews")
                 
-                time.sleep(1)  # Rate limiting
+                time.sleep(1)
                 
             except Exception as e:
                 print(f"[FLIPKART] Error on page {page}: {e}")
@@ -271,13 +325,9 @@ class WebpageScraper:
         reviews = []
         print(f"[FLIPKART] Parsing reviews...")
 
-        # Multiple strategies to find review containers
         strategies = [
-            # Strategy 1: Look for divs with specific classes
             lambda: soup.find_all('div', class_=lambda x: x and ('col' in str(x) or 'review' in str(x).lower())),
-            # Strategy 2: Look for divs with substantial text content
             lambda: soup.find_all('div', text=re.compile(r'.{50,}', re.DOTALL)),
-            # Strategy 3: All divs as fallback
             lambda: soup.find_all('div', recursive=True),
         ]
 
@@ -299,27 +349,23 @@ class WebpageScraper:
             try:
                 full_text = container.get_text(separator=' ', strip=True)
                 
-                # Basic validation
                 if len(full_text) < 50 or len(full_text) > 3000:
                     continue
                 
-                # Check if it's duplicate
                 if full_text in seen_texts:
                     continue
                 
-                # Check if it looks like a review
                 if not self._is_review_text(full_text):
                     continue
                 
                 seen_texts.add(full_text)
                 
-                # Extract review data
                 review_data = self._extract_flipkart_review_smart(container)
                 
                 if review_data and review_data.get('body') and len(review_data['body']) > 30:
                     reviews.append(review_data)
                 
-                if len(reviews) >= 50:  # Limit per page
+                if len(reviews) >= 50:
                     break
                     
             except Exception:
@@ -335,10 +381,8 @@ class WebpageScraper:
         if len(full_text) < 50:
             return None
 
-        # Extract rating
         rating = None
         
-        # Try finding rating in various formats
         rating_elements = container.find_all(['div', 'span'], class_=re.compile(r'star|rating|_3LWZlK', re.I))
         for elem in rating_elements:
             text = elem.get_text(strip=True)
@@ -348,23 +392,19 @@ class WebpageScraper:
                 if 1 <= rating <= 5:
                     break
 
-        # Fallback: count stars in text
         if not rating:
             star_count = full_text.count('★') + full_text.count('⭐')
             if 1 <= star_count <= 5:
                 rating = float(star_count)
 
-        # Fallback: infer from sentiment
         if not rating:
             rating = self._infer_rating_from_text(full_text)
 
-        # Extract review body
         body = self._extract_review_body(full_text)
         
         if not body or len(body) < 30:
             return None
 
-        # Extract author
         author = "Anonymous"
         author_patterns = [
             r'(?:by|By|BY)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
@@ -374,12 +414,10 @@ class WebpageScraper:
             match = re.search(pattern, full_text)
             if match:
                 potential_author = match.group(1).strip()
-                # Validate it's not a common word
                 if potential_author not in ['Certified', 'Buyer', 'Review', 'Rating']:
                     author = potential_author
                     break
 
-        # Extract date
         date = ""
         date_match = re.search(
             r'(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})',
@@ -400,7 +438,6 @@ class WebpageScraper:
 
     def _extract_review_body(self, full_text: str) -> str:
         """Extract clean review body from full text."""
-        # Remove noise patterns
         noise_patterns = [
             r'READ MORE',
             r'Certified Buyer',
@@ -419,10 +456,8 @@ class WebpageScraper:
         for pattern in noise_patterns:
             cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
 
-        # Split into sentences
         sentences = re.split(r'[.!?]+', cleaned)
         
-        # Filter valid review sentences
         valid_sentences = []
         for s in sentences:
             s = s.strip()
@@ -430,10 +465,8 @@ class WebpageScraper:
                 valid_sentences.append(s)
         
         if valid_sentences:
-            # Take up to 5 sentences
             return ". ".join(valid_sentences[:5]) + "."
         
-        # Fallback: return cleaned text if long enough
         if len(cleaned) > 30:
             return cleaned[:500].strip()
         
@@ -443,7 +476,6 @@ class WebpageScraper:
         """Check if a sentence looks like part of a review."""
         text_lower = text.lower()
         
-        # Review-related keywords
         review_words = [
             'product', 'quality', 'good', 'bad', 'excellent', 'poor',
             'buy', 'bought', 'purchase', 'order', 'delivery', 'price',
@@ -460,7 +492,6 @@ class WebpageScraper:
         if not text or len(text) < 50 or len(text) > 3000:
             return False
         
-        # Keywords that indicate review content
         review_keywords = [
             'good', 'bad', 'excellent', 'poor', 'quality', 'product',
             'bought', 'purchased', 'using', 'recommend', 'worth',
@@ -473,7 +504,6 @@ class WebpageScraper:
         text_lower = text.lower()
         keyword_count = sum(1 for keyword in review_keywords if keyword in text_lower)
         
-        # Need at least 2 review keywords
         return keyword_count >= 2
 
     def _infer_rating_from_text(self, text: str) -> float:
@@ -493,13 +523,10 @@ class WebpageScraper:
         
         return 3.0
 
-    # ============== Amazon Scraping ==============
-    
     def _scrape_amazon_with_pagination(self, url: str, max_pages: int = 8) -> List[Dict]:
         """Amazon pagination support."""
         all_reviews = []
         
-        # Extract ASIN and build review URL
         if '/product-reviews/' in url:
             base_url = url.split('?')[0]
         else:
@@ -543,7 +570,6 @@ class WebpageScraper:
         
         for container in containers:
             try:
-                # Extract rating
                 rating = 3.0
                 rating_elem = container.find('i', {'data-hook': 'review-star-rating'})
                 if rating_elem:
@@ -551,19 +577,15 @@ class WebpageScraper:
                     if match:
                         rating = float(match.group(1))
                 
-                # Extract review body
                 body_elem = container.find('span', {'data-hook': 'review-body'})
                 body = body_elem.get_text(strip=True) if body_elem else ""
                 
-                # Extract title
                 title_elem = container.find('a', {'data-hook': 'review-title'})
                 title = title_elem.get_text(strip=True) if title_elem else ""
                 
-                # Extract author
                 author_elem = container.find('span', class_='a-profile-name')
                 author = author_elem.get_text(strip=True) if author_elem else "Anonymous"
                 
-                # Extract date
                 date_elem = container.find('span', {'data-hook': 'review-date'})
                 date = date_elem.get_text(strip=True) if date_elem else ""
                 
@@ -582,8 +604,6 @@ class WebpageScraper:
         
         return reviews
 
-    # ============== Myntra & Generic ==============
-    
     def _scrape_myntra_reviews(self, soup: BeautifulSoup) -> List[Dict]:
         """Scrape Myntra reviews."""
         reviews = []
@@ -633,8 +653,6 @@ class WebpageScraper:
         
         return reviews
 
-    # ============== Helper Methods ==============
-    
     def _remove_noise(self, soup: BeautifulSoup) -> None:
         """Remove scripts, styles, and navigation elements."""
         for tag in ['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe']:
@@ -663,7 +681,6 @@ class WebpageScraper:
                 if len(text) > 10:
                     text_parts.append(text)
         
-        # Remove duplicates while preserving order
         seen = set()
         cleaned = []
         for text in text_parts:
@@ -673,8 +690,10 @@ class WebpageScraper:
         
         return ' '.join(cleaned)
 
-    def _get_metadata(self, soup: BeautifulSoup) -> Dict:
-        """Extract page metadata."""
+    def _get_metadata(self, soup: BeautifulSoup, url: str) -> Dict:
+        """
+        ENHANCED: Extract page metadata including news-specific data.
+        """
         metadata = {}
         
         # Description
@@ -687,21 +706,62 @@ class WebpageScraper:
         if og_title and og_title.get('content'):
             metadata['og_title'] = og_title['content']
         
+        og_type = soup.find('meta', {'property': 'og:type'})
+        if og_type and og_type.get('content'):
+            metadata['og_type'] = og_type['content']
+        
+        # NEW: Publication date (for news articles)
+        date_selectors = [
+            ('meta', {'property': 'article:published_time'}),
+            ('meta', {'name': 'pubdate'}),
+            ('meta', {'name': 'publishdate'}),
+            ('time', {'class': re.compile('date|time|published', re.I)}),
+            ('span', {'class': re.compile('date|time|published', re.I)}),
+        ]
+        
+        for tag, attrs in date_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                date = elem.get('content') or elem.get('datetime') or elem.get_text()
+                if date:
+                    metadata['published_date'] = date.strip()
+                    break
+        
+        # NEW: Author (for news/articles)
+        author_selectors = [
+            ('meta', {'name': 'author'}),
+            ('meta', {'property': 'article:author'}),
+            ('span', {'class': re.compile('author|byline', re.I)}),
+            ('a', {'rel': 'author'}),
+        ]
+        
+        for tag, attrs in author_selectors:
+            elem = soup.find(tag, attrs)
+            if elem:
+                author = elem.get('content') or elem.get_text()
+                if author:
+                    metadata['author'] = author.strip()
+                    break
+        
+        # NEW: Keywords/tags
+        keywords = soup.find('meta', {'name': 'keywords'})
+        if keywords and keywords.get('content'):
+            metadata['keywords'] = keywords['content']
+        
         return metadata
 
 
-# ============== Main Function ==============
-
+# Main function
 def scrape_webpage(url: str, max_pages: int = 8) -> Dict:
     """
-    Main scraping function.
+    Main scraping function with enhanced content type detection.
     
     Args:
         url: URL to scrape
         max_pages: Maximum pages to scrape for reviews (default: 8)
     
     Returns:
-        Dictionary with scraped data
+        Dictionary with scraped data including content_type for summarizer
     """
     scraper = WebpageScraper()
     return scraper.scrape(url, max_pages=max_pages)

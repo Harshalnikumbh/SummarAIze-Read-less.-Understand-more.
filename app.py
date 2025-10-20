@@ -31,7 +31,7 @@ def help_page():
 def summarize():
     """Enhanced endpoint with better content validation and error messages."""
     try:
-        data = request.json
+        data = request.json 
         url = data.get('url')
         max_pages = data.get('max_pages', 25)
 

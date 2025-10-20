@@ -98,20 +98,172 @@ def load_models():
     print(f"{'='*60}\n")
 
 
+def detect_content_type(text, url=None):
+    """
+    ENHANCED: Robust detection with URL awareness
+    Returns: 'product_review', 'news_article', 'general_webpage', 'technical_doc'
+    """
+    if not text:
+        return 'general_webpage'
+    
+    text_lower = text.lower()
+    text_words = text_lower.split()
+    
+    # === PRIORITY: URL-BASED DETECTION ===
+    review_score = 0
+    news_score = 0
+    tech_score = 0
+    general_score = 0
+    
+    if url:
+        url_lower = url.lower()
+        
+        # Strong URL signals for news
+        news_domains = [
+            'bbc.com', 'cnn.com', 'reuters.com', 'nytimes.com',
+            'theguardian.com', 'timesofindia.com', 'hindustantimes.com',
+            'indianexpress.com', 'ndtv.com', 'thehindu.com',
+            'news18.com', 'firstpost.com', 'scroll.in'
+        ]
+        
+        news_paths = ['/news/', '/article/', '/story/', '/breaking-', '/report/']
+        
+        if any(domain in url_lower for domain in news_domains):
+            news_score += 10
+            print(f"[CONTENT DETECTION] Strong news signal from domain")
+        
+        if any(path in url_lower for path in news_paths):
+            news_score += 8
+            print(f"[CONTENT DETECTION] News path pattern detected")
+        
+        # Strong URL signals for reviews
+        review_domains = ['amazon', 'flipkart', 'myntra', 'reviews']
+        review_paths = ['/product-reviews/', '/customer-reviews/', '/reviews/', '/dp/', '/p/']
+        
+        if any(domain in url_lower for domain in review_domains):
+            review_score += 10
+        
+        if any(path in url_lower for path in review_paths):
+            review_score += 8
+        
+        # Strong URL signals for technical docs
+        tech_domains = ['github.com', 'readthedocs', 'docs.', 'developer.', 'api.']
+        tech_paths = ['/docs/', '/documentation/', '/api/', '/reference/', '/guide/']
+        
+        if any(domain in url_lower for domain in tech_domains):
+            tech_score += 10
+        
+        if any(path in url_lower for path in tech_paths):
+            tech_score += 8
+    
+    # === PRODUCT REVIEW DETECTION ===
+    review_keywords = {
+        'strong': ['customer', 'buyer', 'purchase', 'bought', 'ordered', 'product review'],
+        'medium': ['quality', 'recommend', 'rating', 'star', 'pros', 'cons', 'satisfied',
+                   'disappointed', 'worth buying', 'value for money', 'good product', 'bad product'],
+        'weak': ['product', 'item', 'delivery', 'packaging', 'seller']
+    }
+    review_score += sum(3 for kw in review_keywords['strong'] if kw in text_lower)
+    review_score += sum(2 for kw in review_keywords['medium'] if kw in text_lower)
+    review_score += sum(1 for kw in review_keywords['weak'] if kw in text_lower)
+    
+    if re.search(r'\b[1-5](?:\.\d)?\s*(?:star|rating)', text_lower):
+        review_score += 4
+    
+    if re.search(r'verified|certified\s+(?:buyer|purchase)', text_lower):
+        review_score += 5
+    
+    # === NEWS ARTICLE DETECTION ===
+    news_keywords = {
+        'strong': ['reported', 'according to', 'investigation', 'authorities', 'officials',
+                   'statement', 'press conference', 'breaking news', 'correspondent',
+                   'spokesperson', 'ministry', 'government'],
+        'medium': ['incident', 'event', 'sources', 'claimed', 'alleged', 'confirmed',
+                   'announced', 'revealed', 'discovered', 'found that', 'said that'],
+        'weak': ['said', 'told', 'news', 'today', 'yesterday', 'recently']
+    }
+    news_score += sum(3 for kw in news_keywords['strong'] if kw in text_lower)
+    news_score += sum(2 for kw in news_keywords['medium'] if kw in text_lower)
+    news_score += sum(1 for kw in news_keywords['weak'] if kw in text_lower)
+    
+    # News agency patterns
+    if re.search(r'(?:times of india|bbc|cnn|reuters|associated press|pti|ani|afp|ians)', text_lower):
+        news_score += 5
+    
+    # Date patterns common in news
+    if re.search(r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}(?:,\s*\d{4})?', text_lower):
+        news_score += 2
+    
+    # === TECHNICAL DOCUMENTATION DETECTION ===
+    tech_keywords = {
+        'strong': ['api', 'function', 'method', 'parameter', 'syntax', 'endpoint',
+                   'documentation', 'implementation', 'configuration', 'installation guide'],
+        'medium': ['command', 'usage', 'example', 'returns', 'argument', 'code snippet',
+                   'library', 'module', 'class', 'interface'],
+        'weak': ['technical', 'system', 'software', 'application', 'version']
+    }
+    tech_score += sum(3 for kw in tech_keywords['strong'] if kw in text_lower)
+    tech_score += sum(2 for kw in tech_keywords['medium'] if kw in text_lower)
+    tech_score += sum(1 for kw in tech_keywords['weak'] if kw in text_lower)
+    
+    if re.search(r'(?:def|function|class|import|require|npm|pip install)', text_lower):
+        tech_score += 5
+    
+    if re.search(r'[{}()\[\]<>].*[{}()\[\]<>]', text):
+        tech_score += 2
+    
+    # === GENERAL WEBPAGE DETECTION ===
+    general_keywords = ['about', 'contact', 'home', 'services', 'company', 'welcome',
+                       'learn more', 'read more', 'click here', 'subscribe']
+    general_score += sum(1 for kw in general_keywords if kw in text_lower)
+    
+    if len(text_words) < 100:
+        general_score += 2
+    
+    # === SCORING AND DECISION ===
+    scores = {
+        'product_review': review_score,
+        'news_article': news_score,
+        'technical_doc': tech_score,
+        'general_webpage': general_score
+    }
+    
+    max_score = max(scores.values())
+    
+    if max_score < 3:
+        print(f"[CONTENT DETECTION] Low scores, defaulting to general_webpage")
+        return 'general_webpage'
+    
+    content_type = max(scores, key=scores.get)
+    
+    # Validation thresholds
+    thresholds = {
+        'product_review': 5,
+        'news_article': 4,
+        'technical_doc': 4,
+        'general_webpage': 0
+    }
+    
+    if scores[content_type] < thresholds.get(content_type, 0):
+        print(f"[CONTENT DETECTION] {content_type} score {scores[content_type]} below threshold, using general_webpage")
+        content_type = 'general_webpage'
+    
+    print(f"[CONTENT DETECTION] Scores: Review={review_score}, News={news_score}, Tech={tech_score}, General={general_score}")
+    print(f"[CONTENT DETECTION] ✅ Detected as: {content_type} (score: {scores[content_type]})")
+    
+    return content_type
+
+
 def is_english_text(text):
     """Check if text is primarily English (not Russian, Chinese, etc.)"""
     if not text:
         return False
     
-    # Check for non-Latin characters (Cyrillic, Chinese, Arabic, etc.)
     non_latin = re.findall(r'[^\x00-\x7F\u0080-\u00FF]', text)
     
-    # If more than 20% is non-Latin, reject it
     if len(non_latin) > len(text) * 0.2:
-        print(f"[LANGUAGE CHECK] Rejected: Contains {len(non_latin)} non-Latin characters")
         return False
     
-    # Check for common English words
     common_words = ['the', 'is', 'are', 'was', 'were', 'have', 'has', 'had', 'do', 'does', 
                    'will', 'would', 'can', 'could', 'should', 'this', 'that', 'with', 'for',
                    'product', 'good', 'bad', 'quality', 'phone', 'battery', 'camera']
@@ -120,7 +272,6 @@ def is_english_text(text):
     has_english = sum(1 for word in common_words if word in text_lower)
     
     if has_english < 2:
-        print(f"[LANGUAGE CHECK] Rejected: Not enough English words")
         return False
     
     return True
@@ -131,44 +282,33 @@ def aggressive_clean_review(text):
     if not text:
         return ""
     
-    # FIRST: Check if English, reject if not
     if not is_english_text(text):
         return ""
     
-    # Remove ALL metadata patterns
     text = re.sub(r'(?:Certified|Verified)\s+(?:Buyer|Purchase|Customer)', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'Flipkart\s+Customer', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Flipkart\s+Customer|Amazon\s+Customer', '', text, flags=re.IGNORECASE)
     text = re.sub(r'READ\s+MORE|Report\s+Abuse|Was\s+this\s+helpful|Helpful\?', '', text, flags=re.IGNORECASE)
     
-    # Remove ALL date patterns
     text = re.sub(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\d{1,2}\s+(?:days?|weeks?|months?|years?)\s+ago', '', text, flags=re.IGNORECASE)
     text = re.sub(r'Permalink[s]?', '', text, flags=re.IGNORECASE)
     
-    # Remove ALL location patterns (cities, states)
-    text = re.sub(r'\b(?:Delhi|Mumbai|Bangalore|Gurgaon|Punjab|Maharashtra|Jalandhar|Bhiwani|Mehendia|Pannu|Gurgawala|Ahmedabad|Chennai|Kolkata|Hyderabad)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(?:Delhi|Mumbai|Bangalore|Gurgaon|Punjab|Maharashtra|Jalandhar|Bhiwani|Mehendia|Pannu|Gurgawala|Ahmedabad|Chennai|Kolkata|Hyderabad|Agra)\b', '', text, flags=re.IGNORECASE)
     
-    # Remove ALL name patterns (common names)
-    text = re.sub(r'\b(?:Vivek|Kumar|Rahul|Shivam|Raman|Khanna|Chopra|Pannu|Bhiwani|Mehendia|Singh|Sharma|Patel|Gupta|Thakur|Thakор)\b', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b(?:Vivek|Kumar|Rahul|Shivam|Raman|Khanna|Chopra|Pannu|Bhiwani|Mehendia|Singh|Sharma|Patel|Gupta|Thakur|Thakор|Banke|Bihari)\b', '', text, flags=re.IGNORECASE)
     
-    # Remove ALL rating-related words
     text = re.sub(r'\b(?:Excellent|Very\s+Good|Good|Pleasant|Interesting|Fine|Wonderful|satisfied|rating|star)\b', '', text, flags=re.IGNORECASE)
     
-    # Remove URLs and emails
     text = re.sub(r'http[s]?://\S+|www\.\S+|\S+@\S+', '', text)
     
-    # Remove special characters and symbols
     text = re.sub(r'[★☆⭐•●○◆◇✓✗×→←↑↓₹$€£¥@#%&():;|]', '', text)
     
-    # Remove standalone single letters and short meaningless words
     text = re.sub(r'\b[a-zA-Z]\b', '', text)
     
-    # Clean excessive whitespace
     text = re.sub(r'\s+', ' ', text)
     
     cleaned = text.strip()
     
-    # Final English check after cleaning
     if not is_english_text(cleaned):
         return ""
     
@@ -180,25 +320,19 @@ def clean_output_text(text):
     if not text:
         return ""
     
-    # Check if English first
     if not is_english_text(text):
         return ""
     
-    # Remove ALL numbers and number-related patterns
     text = re.sub(r'\d+[\d,.\s:/-]*', '', text)
     text = re.sub(r'\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b', '', text, flags=re.IGNORECASE)
     
-    # Remove rating/review metadata
     text = re.sub(r'(?:star|rating|review)s?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'Certified\s+Buyer|Verified\s+Purchase', '', text, flags=re.IGNORECASE)
     
-    # Remove special characters
     text = re.sub(r'[★☆⭐•●○◆◇✓✗×→←↑↓₹$€£¥@#%&|]', '', text)
     
-    # Remove dates
     text = re.sub(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*,?\s*', '', text, flags=re.IGNORECASE)
     
-    # Clean punctuation
     text = re.sub(r'\.{2,}', '.', text)
     text = re.sub(r'\s+', ' ', text)
     
@@ -210,80 +344,80 @@ def smart_clean_text(text):
     if not text:
         return ""
     
-    # Check if English
     if not is_english_text(text):
         return ""
     
-    # Remove metadata but keep actual content
     text = re.sub(r'READ MORE|Report Abuse|Was this helpful|Helpful\?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'Certified\s+Buyer|Flipkart\s+Customer', '', text, flags=re.IGNORECASE)
     
-    # Remove URLs and emails
     text = re.sub(r'http[s]?://\S+|www\.\S+|\S+@\S+', '', text)
     
-    # Clean whitespace
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
 
-def is_meaningful_sentence(sentence):
-    """Check if sentence is meaningful product review content"""
+def is_meaningful_sentence(sentence, content_type='product_review'):
+    """Check if sentence is meaningful based on content type"""
     sentence = sentence.strip()
     
-    # FIRST: Must be English
     if not is_english_text(sentence):
         return False
     
-    # Length requirements
     if len(sentence) < 25 or len(sentence) > 350:
         return False
     
-    # Must contain actual words (not just noise)
     words = sentence.split()
     if len(words) < 6:
         return False
     
-    # Check for meaningful product-related words
-    meaningful_words = ['product', 'quality', 'phone', 'camera', 'battery', 'display', 'screen', 
-                       'performance', 'value', 'price', 'feature', 'design', 'build', 'works',
-                       'good', 'bad', 'excellent', 'poor', 'great', 'issue', 'problem', 'love',
-                       'like', 'recommend', 'buy', 'purchase', 'worth', 'money', 'device',
-                       'sound', 'speaker', 'audio', 'charging', 'fast', 'slow', 'durable',
-                       'cheap', 'expensive', 'satisfied', 'disappointed', 'happy', 'unhappy']
+    if content_type == 'product_review':
+        meaningful_words = ['product', 'quality', 'phone', 'camera', 'battery', 'display', 'screen', 
+                           'performance', 'value', 'price', 'feature', 'design', 'build', 'works',
+                           'good', 'bad', 'excellent', 'poor', 'great', 'issue', 'problem', 'love',
+                           'like', 'recommend', 'buy', 'purchase', 'worth', 'money', 'device',
+                           'sound', 'speaker', 'audio', 'charging', 'fast', 'slow', 'durable',
+                           'cheap', 'expensive', 'satisfied', 'disappointed', 'happy', 'unhappy']
+    elif content_type == 'news_article':
+        meaningful_words = ['reported', 'according', 'found', 'discovered', 'investigation',
+                           'incident', 'event', 'authorities', 'officials', 'statement', 'said',
+                           'announced', 'revealed', 'confirmed', 'sources', 'happened', 'occurred',
+                           'ministry', 'government', 'police', 'court', 'case', 'arrested']
+    elif content_type == 'technical_doc':
+        meaningful_words = ['function', 'method', 'parameter', 'configuration', 'installation',
+                           'feature', 'usage', 'implementation', 'syntax', 'command', 'api',
+                           'system', 'process', 'data', 'code', 'application']
+    else:
+        meaningful_words = ['information', 'content', 'details', 'describes', 'explains',
+                           'provides', 'includes', 'features', 'available', 'important',
+                           'key', 'main', 'primary', 'essential', 'significant']
     
     has_meaningful = any(word in sentence.lower() for word in meaningful_words)
     if not has_meaningful:
         return False
     
-    # Reject if contains too many proper nouns (likely names/places)
     proper_nouns = sum(1 for word in words if word[0].isupper() and len(word) > 1)
     if proper_nouns > len(words) * 0.3:
         return False
     
-    # Reject if contains numbers
     if re.search(r'\d', sentence):
         return False
     
-    # Reject incomplete sentences
-    if sentence.endswith(('demonstr', 'statemen', 'unfortun', 'howev')):
+    if sentence.endswith(('demonstr', 'statemen', 'unfortun', 'howev', 'accordingl', 'therefor')):
         return False
     
     return True
 
 
-def post_process_output(text):
+def post_process_output(text, content_type='product_review'):
     """Final cleanup - create clean, natural sentences"""
     if not text:
         return ""
     
-    # Must be English
     if not is_english_text(text):
         return ""
     
-    # Clean the text
     text = clean_output_text(text)
     
-    # Split into sentences
     sentences = re.split(r'[.!?]+', text)
     
     cleaned_sentences = []
@@ -292,18 +426,15 @@ def post_process_output(text):
     for sentence in sentences:
         sentence = sentence.strip()
         
-        # Use meaningful sentence checker
-        if not is_meaningful_sentence(sentence):
+        if not is_meaningful_sentence(sentence, content_type):
             continue
         
-        # Skip duplicates
         sentence_lower = sentence.lower()
         if sentence_lower in seen:
             continue
         
         seen.add(sentence_lower)
         
-        # Add period if needed
         if not sentence.endswith('.'):
             sentence += '.'
         
@@ -320,19 +451,15 @@ def safe_truncate_text(text, max_tokens=380):
     try:
         tokens = t5_tokenizer.encode(text, add_special_tokens=False, truncation=False)
         
-        print(f"[TRUNCATE] Input has {len(tokens)} tokens, max allowed: {max_tokens}")
-        
         if len(tokens) <= max_tokens:
             return text
         
-        # Take first 70% and last 30% to preserve context
         first_chunk = int(max_tokens * 0.7)
         last_chunk = int(max_tokens * 0.3)
         
         truncated_tokens = tokens[:first_chunk] + tokens[-last_chunk:]
         result = t5_tokenizer.decode(truncated_tokens, skip_special_tokens=True)
         
-        print(f"[TRUNCATE] Truncated to {len(truncated_tokens)} tokens")
         return result
         
     except Exception as e:
@@ -340,8 +467,61 @@ def safe_truncate_text(text, max_tokens=380):
         return text[:1500]
 
 
-def stage1_t5_extract(input_text, task_type="summarize", max_length=180):
-    """Stage 1: T5 extracts key information"""
+def get_prompts_for_content_type(content_type, task_type):
+    """
+    ENHANCED: Get customized prompts with better news/article handling
+    Returns: (t5_prompt_template, llama_system_prompt)
+    """
+    
+    if content_type == 'product_review':
+        if task_type == "extract_pros":
+            return (
+                "List what customers love about this product: {}",
+                "You are a product reviewer. Write about what customers appreciate in this product. Focus ONLY on product features, quality, and performance. Write naturally like explaining to a friend."
+            )
+        elif task_type == "extract_cons":
+            return (
+                "List customer complaints and issues with this product: {}",
+                "You are a product reviewer. Write about customer concerns with this product. Focus ONLY on product issues, defects, and problems. Write naturally like explaining to a friend."
+            )
+        elif task_type == "brief":
+            return (
+                "Write a product review summary: {}",
+                "You are a product reviewer. Write a natural summary about this product based on customer feedback. Focus on product features, quality, and value."
+            )
+        else:
+            return (
+                "Summarize this product review: {}",
+                "You are a product reviewer. Write naturally about this product based on customer reviews."
+            )
+    
+    elif content_type == 'news_article':
+        if task_type == "summarize":
+            return (
+                "Summarize this news article covering what happened, when, where, who was involved, and the outcome: {}",
+                "You are a news editor. Write a concise, objective summary covering the 5 W's (who, what, when, where, why) and key outcomes. Be factual and neutral. Focus on the main events and their significance. Avoid speculation or opinion."
+            )
+        else:
+            return (
+                "Summarize the key facts from this news article: {}",
+                "You are a news summarizer. Present the main facts clearly and objectively. Focus on verified information and key developments."
+            )
+    
+    elif content_type == 'technical_doc':
+        return (
+            "Summarize the key technical information and important features: {}",
+            "You are a technical writer. Summarize the important technical details, features, and functionality. Be clear, precise, and focus on practical information that developers or users need to know."
+        )
+    
+    else:
+        return (
+            "Summarize the main points and key information from this content: {}",
+            "You are a content summarizer. Write a clear, informative summary of the main points. Be concise and focus on the most important takeaways that readers should know."
+        )
+
+
+def stage1_t5_extract(input_text, task_type="summarize", content_type="product_review", max_length=180):
+    """Stage 1: T5 extracts key information with content-aware prompts"""
     if not T5_READY or t5_model is None:
         return None
     
@@ -350,24 +530,16 @@ def stage1_t5_extract(input_text, task_type="summarize", max_length=180):
         
         tokens = t5_tokenizer.encode(input_text, add_special_tokens=False, truncation=False)
         if len(tokens) > max_input_tokens:
-            print(f"[T5] Truncating input from {len(tokens)} to {max_input_tokens} tokens")
             tokens = tokens[:max_input_tokens]
             input_text = t5_tokenizer.decode(tokens, skip_special_tokens=True)
         
-        # Product-focused prompts
-        if task_type == "extract_pros":
-            prompt = f"List what customers love about this product: {input_text}"
-        elif task_type == "extract_cons":
-            prompt = f"List customer complaints and issues with this product: {input_text}"
-        elif task_type == "brief":
-            prompt = f"Write a product review summary: {input_text}"
-        else:
-            prompt = f"Summarize this product review: {input_text}"
+        prompt_template, _ = get_prompts_for_content_type(content_type, task_type)
+        prompt = prompt_template.format(input_text)
         
-        # Verify prompt length
+        print(f"[T5] Using prompt for {content_type}: {prompt[:100]}...")
+        
         prompt_tokens = t5_tokenizer.encode(prompt, add_special_tokens=False, truncation=False)
         if len(prompt_tokens) > 500:
-            print(f"[T5] Warning: Prompt has {len(prompt_tokens)} tokens, truncating...")
             prompt_tokens = prompt_tokens[:500]
             prompt = t5_tokenizer.decode(prompt_tokens, skip_special_tokens=True)
         
@@ -400,23 +572,16 @@ def stage1_t5_extract(input_text, task_type="summarize", max_length=180):
         return None
 
 
-def stage2_llama_refine(t5_output, task_type="summarize"):
-    """Stage 2: Llama refines into natural product review language"""
+def stage2_llama_refine(t5_output, task_type="summarize", content_type="product_review"):
+    """Stage 2: Llama refines into natural language with content-aware prompts"""
     
     if not LLAMA_READY or llama_model is None:
-        print(f"[LLAMA STAGE 2] Llama not ready - using T5 output only")
-        return post_process_output(t5_output)
+        return post_process_output(t5_output, content_type)
     
     try:
-        # Product review specific system prompts
-        if task_type == "extract_pros":
-            system_prompt = "You are a product reviewer. Write about what customers appreciate in this product. Focus ONLY on product features, quality, and performance. Write naturally and conversationally like explaining to a friend."
-        elif task_type == "extract_cons":
-            system_prompt = "You are a product reviewer. Write about customer concerns with this product. Focus ONLY on product issues, defects, and problems. Write naturally and conversationally like explaining to a friend."
-        elif task_type == "brief":
-            system_prompt = "You are a product reviewer. Write a natural summary about this product based on customer feedback. Focus on product features, quality, and value. Be conversational and clear."
-        else:
-            system_prompt = "You are a product reviewer. Write naturally about this product based on customer reviews. Focus on product quality, features, and value."
+        _, system_prompt = get_prompts_for_content_type(content_type, task_type)
+        
+        print(f"[LLAMA] Using system prompt for {content_type}")
         
         prompt = f"""<|system|>
 {system_prompt}</s>
@@ -451,51 +616,43 @@ def stage2_llama_refine(t5_output, task_type="summarize"):
         
         llama_output = llama_tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Extract assistant's response
         if "<|assistant|>" in llama_output:
             llama_output = llama_output.split("<|assistant|>")[-1].strip()
         
-        # Remove system tokens
         llama_output = re.sub(r'<\|.*?\|>', '', llama_output).strip()
         
-        # Clean the output
-        cleaned = post_process_output(llama_output)
+        cleaned = post_process_output(llama_output, content_type)
         
-        # Fallback if cleaning removed everything
         if not cleaned or len(cleaned) < 30:
-            return post_process_output(t5_output)
+            return post_process_output(t5_output, content_type)
         
         return cleaned
         
     except Exception as e:
         print(f"[LLAMA STAGE 2] Error: {e}")
-        return post_process_output(t5_output)
+        return post_process_output(t5_output, content_type)
     finally:
         if device == "cpu":
             gc.collect()
 
 
-def multi_stage_process(input_text, task_type="summarize"):
-    """Multi-stage processing: T5 extraction → Llama refinement"""
+def multi_stage_process(input_text, task_type="summarize", content_type="product_review"):
+    """Multi-stage processing: T5 extraction → Llama refinement with content awareness"""
     try:
-        # Stage 1: T5 extraction
-        t5_output = stage1_t5_extract(input_text, task_type=task_type)
+        t5_output = stage1_t5_extract(input_text, task_type=task_type, content_type=content_type)
         
         if not t5_output:
             return None
         
-        # Stage 2: Llama refinement
-        final_output = stage2_llama_refine(t5_output, task_type=task_type)
+        final_output = stage2_llama_refine(t5_output, task_type=task_type, content_type=content_type)
         
         return final_output
     
     except Exception as e:
         print(f"[MULTI-STAGE] Error: {str(e)}")
         return None
-
-
 def summarize_text(text, max_length=300, min_length=100):
-    """Summarize general text content using multi-stage processing"""
+    """Summarize general text content with automatic content type detection"""
     if not T5_READY:
         load_models()
     
@@ -506,6 +663,10 @@ def summarize_text(text, max_length=300, min_length=100):
         return "Summarization model not available."
     
     try:
+        # Detect content type
+        content_type = detect_content_type(text)
+        print(f"[SUMMARIZER] Content type detected: {content_type}")
+        
         cleaned_text = smart_clean_text(text)
         
         if len(cleaned_text) < 50:
@@ -513,12 +674,13 @@ def summarize_text(text, max_length=300, min_length=100):
         
         cleaned_text = safe_truncate_text(cleaned_text, max_tokens=380)
         
-        print(f"[SUMMARIZER] Processing {len(cleaned_text)} characters")
+        print(f"[SUMMARIZER] Processing {len(cleaned_text)} characters as {content_type}")
         
         if len(cleaned_text) < 50:
             return "Content too short after cleaning."
         
-        result = multi_stage_process(cleaned_text, task_type="summarize")
+        # Use content-aware processing
+        result = multi_stage_process(cleaned_text, task_type="summarize", content_type=content_type)
         
         if not result or len(result) < 30:
             return "Unable to generate meaningful summary."
@@ -630,7 +792,7 @@ def summarize_reviews_with_analysis(reviews_data, max_reviews=150):
         
         stats = calculate_review_stats(ratings, len(reviews_data))
         
-        # Generate summaries with fallbacks
+        # Generate summaries with fallbacks (always use product_review content type)
         brief_summary = generate_brief_summary(positive_reviews + negative_reviews, stats)
         pros = extract_pros(positive_reviews)
         cons = extract_cons(negative_reviews)
@@ -690,7 +852,8 @@ def generate_brief_summary(review_texts, stats):
         
         print(f"[BRIEF] Processing {len(combined)} characters from {len(cleaned_reviews)} reviews")
         
-        result = multi_stage_process(combined, task_type="brief")
+        # Always use product_review content type for reviews
+        result = multi_stage_process(combined, task_type="brief", content_type="product_review")
         
         if not result or len(result) < 30:
             avg_rating = stats.get('average_rating', 0)
@@ -731,7 +894,8 @@ def extract_pros(positive_reviews):
         
         print(f"[PROS] Processing {len(combined)} characters from {len(cleaned)} reviews")
         
-        result = multi_stage_process(combined, task_type="extract_pros")
+        # Always use product_review content type
+        result = multi_stage_process(combined, task_type="extract_pros", content_type="product_review")
         
         if not result or len(result) < 30:
             print(f"[PROS] Model output too short, using fallback")
@@ -744,8 +908,8 @@ def extract_pros(positive_reviews):
         for s in sentences:
             s = s.strip()
             
-            # Use meaningful sentence checker
-            if not is_meaningful_sentence(s):
+            # Use meaningful sentence checker with product_review type
+            if not is_meaningful_sentence(s, 'product_review'):
                 continue
             
             if not s.endswith('.'):
@@ -793,7 +957,8 @@ def extract_cons(negative_reviews):
         
         print(f"[CONS] Processing {len(combined)} characters from {len(cleaned)} reviews")
         
-        result = multi_stage_process(combined, task_type="extract_cons")
+        # Always use product_review content type
+        result = multi_stage_process(combined, task_type="extract_cons", content_type="product_review")
         
         if not result or len(result) < 30:
             print(f"[CONS] Model output too short, using fallback")
@@ -806,8 +971,8 @@ def extract_cons(negative_reviews):
         for s in sentences:
             s = s.strip()
             
-            # Use meaningful sentence checker
-            if not is_meaningful_sentence(s):
+            # Use meaningful sentence checker with product_review type
+            if not is_meaningful_sentence(s, 'product_review'):
                 continue
             
             if not s.endswith('.'):
@@ -867,3 +1032,86 @@ def calculate_review_stats(ratings, total):
         stats['negative_percentage'] = round((neg / len(ratings)) * 100, 1)
     
     return stats
+
+
+# ===== DETECTION TEST EXAMPLES =====
+def test_content_detection():
+    """Test the content detection with various examples"""
+    
+    test_cases = [
+        {
+            'name': 'Product Review',
+            'text': '''
+                Verified Buyer - 5 star rating
+                Excellent product! I bought this phone last month and the quality is amazing.
+                The camera is superb and battery lasts all day. Highly recommend to everyone.
+                Value for money is great. Pros: Good build, fast performance. Cons: Slightly heavy.
+            ''',
+            'expected': 'product_review'
+        },
+        {
+            'name': 'News Article',
+            'text': '''
+                Banke Bihari toshkhana survey: Gold, silver bars, gemstones found in underground chamber
+                According to temple authorities, an investigation revealed precious items during the survey.
+                Officials confirmed the discovery yesterday. The incident was reported by local sources.
+                A statement from the press conference announced further examination.
+            ''',
+            'expected': 'news_article'
+        },
+        {
+            'name': 'Technical Documentation',
+            'text': '''
+                API Reference Documentation
+                function install_package(parameter: string): void
+                Usage: npm install package-name
+                Configuration: Set the API endpoint in config.json
+                Example code snippet showing implementation of the authentication method.
+                Returns a promise with the response data.
+            ''',
+            'expected': 'technical_doc'
+        },
+        {
+            'name': 'General Webpage',
+            'text': '''
+                Welcome to our company website. Learn more about our services and what we offer.
+                Contact us for more information. Click here to read more about our story.
+                Home | About | Services | Contact
+                Subscribe to our newsletter for updates.
+            ''',
+            'expected': 'general_webpage'
+        },
+        {
+            'name': 'Ambiguous Short Text',
+            'text': 'This is a short message about something.',
+            'expected': 'general_webpage'
+        }
+    ]
+    
+    print("\n" + "="*70)
+    print("🧪 CONTENT DETECTION TESTS")
+    print("="*70)
+    
+    passed = 0
+    failed = 0
+    
+    for i, test in enumerate(test_cases, 1):
+        print(f"\n[TEST {i}] {test['name']}")
+        print("-" * 70)
+        detected = detect_content_type(test['text'])
+        expected = test['expected']
+        
+        if detected == expected:
+            print(f"✅ PASSED: Detected '{detected}' (Expected: '{expected}')")
+            passed += 1
+        else:
+            print(f"❌ FAILED: Detected '{detected}' but expected '{expected}'")
+            failed += 1
+    
+    print("\n" + "="*70)
+    print(f"📊 RESULTS: {passed} passed, {failed} failed out of {len(test_cases)} tests")
+    print("="*70 + "\n")
+    
+    return passed == len(test_cases)
+# Uncomment to run tests
+# test_content_detection()
