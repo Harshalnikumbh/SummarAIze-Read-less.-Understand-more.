@@ -10,5 +10,5 @@ lxml==5.1.0
 
 # Machine Learning & NLP
 transformers==4.36.2
-torch==2.3.0
+torch==2.9.0
 sentencepiece==0.1.99
