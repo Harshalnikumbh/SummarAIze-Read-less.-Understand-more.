@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Home - SummarAIze{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Summarize Reviews & Web Pages</h2>
+    <div class="action-row">
+      <input type="url" id="urlInput" class="input" placeholder="Paste the URL">
+      <button id="summarizeBtn" class="btn">Click to Summarize</button>
+    </div>
+  </div>  
+  
+  <!-- Summary box OUTSIDE the card -->
+  <div id="summaryBox"></div>
+{% endblock %}
