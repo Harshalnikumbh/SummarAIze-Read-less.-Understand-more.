@@ -58,3 +58,5 @@ SummarAIze operates on a **three-stage pipeline**:
 - ⏱️ Save hours of manual reading and content analysis  
 
 ---
+## 🚀 **Demo Video**
+https://youtu.be/gCytuWzPg10
