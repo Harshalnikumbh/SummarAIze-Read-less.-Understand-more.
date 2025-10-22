@@ -45,27 +45,8 @@ SummarAIze uses a sophisticated three-stage pipeline:
 - Research competitor products efficiently
 - Save time on content consumption
 
-## 🛠️ Local Development
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-
-# Install dependencies
-pip install -r requirements.txt
-
 # Run the application
 python app.py
-```
-
-## 📦 Docker Deployment
-
-```bash
-# Build the Docker image
-docker build -t summaraize .
-
-# Run the container
-docker run -p 7860:7860 summaraize
 ```
 
 ## 🤝 Contributing
