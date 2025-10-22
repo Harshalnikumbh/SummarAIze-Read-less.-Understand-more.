@@ -58,8 +58,3 @@ SummarAIze operates on a **three-stage pipeline**:
 - ⏱️ Save hours of manual reading and content analysis  
 
 ---
-
-## 🧠 **Run the Application**
-
-```bash
-python app.py
