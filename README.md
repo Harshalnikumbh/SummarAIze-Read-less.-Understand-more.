@@ -1,62 +1,65 @@
+<h1 align="center">📝 SummarAIze</h1>
+
+<p align="center">
+  <b><i>AI-Powered Summarization for E-commerce Reviews & Web Pages</i></b>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License">
+  <img src="https://img.shields.io/badge/Framework-Flask-blue?logo=flask">
+  <img src="https://img.shields.io/badge/Models-T5%20%7C%20TinyLlama-purple?logo=pytorch">
+  <img src="https://img.shields.io/badge/Deployment-Docker-blueviolet?logo=docker">
+</p>
+
 ---
-title: SummarAIze
-emoji: 📝
-colorFrom: blue
-colorTo: purple
-sdk: docker
-pinned: false
-license: mit
+
+## 🎯 **Overview**
+
+**SummarAIze** 🤖✨ is an intelligent text summarization application that transforms lengthy **product reviews** and **web content** into concise, human-readable summaries — powered by modern transformer models.
+
 ---
 
-# SummarAIze 🤖✨
+## 🌈 **Features**
 
-**AI-Powered Summarization for E-commerce Reviews & Web Pages**
+- 🛍️ **E-commerce Review Summarization** – Aggregate and summarize multiple product reviews  
+- 🌐 **Web Page Summarization** – Extract and summarize content from any URL  
+- 🧠 **Dual-Model Architecture** – Combines **T5** and **TinyLlama** for optimal performance  
+- 💬 **Human-like Output** – Generates natural, conversational summaries  
 
-SummarAIze is an intelligent text summarization application that transforms lengthy product reviews and web content into concise, human-readable summaries.
+---
 
-## 🎯 Features
+## ⚙️ **How It Works**
 
-- **E-commerce Review Summarization**: Aggregate and summarize multiple product reviews
-- **Web Page Summarization**: Extract and summarize content from any URL
-- **Dual-Model Architecture**: Combines T5 and TinyLlama for optimal results
-- **Human-like Output**: Natural language summaries that are easy to read
+SummarAIze operates on a **three-stage pipeline**:
 
-## 🔧 How It Works
+1. 🕸️ **Web Scraping** → Extracts text from URLs using `BeautifulSoup`  
+2. ✂️ **Initial Summarization** → Condenses text via the **T5 Transformer**  
+3. 🪄 **Refinement** → The **TinyLlama** model rewrites the T5 output into natural, human-like language  
 
-SummarAIze uses a sophisticated three-stage pipeline:
+---
 
-1. **Web Scraping**: Extracts content from URLs using BeautifulSoup
-2. **Initial Summarization**: T5 model processes and condenses the raw text
-3. **Natural Language Refinement**: TinyLlama transforms the T5 output into human-like, conversational summaries
+## 🧩 **Technology Stack**
 
-## 🚀 Technology Stack
+| Layer | Technology |
+|-------|-------------|
+| **Backend** | Flask |
+| **ML Models** | T5, TinyLlama |
+| **Web Scraping** | BeautifulSoup4 |
+| **Deployment** | Docker |
+| **Frontend** | Html,Css,Js |
 
-- **Backend**: Flask
-- **ML Models**: 
-  - T5 (Text-to-Text Transfer Transformer)
-  - TinyLlama (Language Model)
-- **Web Scraping**: BeautifulSoup4
-- **Deployment**: Docker
+---
 
-## 💡 Use Cases
+## 🚀 **Use Cases**
 
-- Quickly understand product sentiment from hundreds of reviews
-- Get the gist of long articles and blog posts
-- Research competitor products efficiently
-- Save time on content consumption
+- ⚡ Quickly grasp product sentiment from hundreds of reviews  
+- 📰 Understand long-form articles & blogs in seconds  
+- 🔍 Conduct product or market research efficiently  
+- ⏱️ Save hours of manual reading and content analysis  
 
-# Run the application
+---
+
+## 🧠 **Run the Application**
+
+```bash
 python app.py
-```
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-Built with ❤️ using Flask, T5, and TinyLlama
