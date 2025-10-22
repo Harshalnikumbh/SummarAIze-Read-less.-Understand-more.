@@ -59,4 +59,4 @@ SummarAIze operates on a **three-stage pipeline**:
 
 ---
 ## 🚀 **Demo Video**
-https://youtu.be/gCytuWzPg10
+https://youtu.be/Jzq_J4Nd6_w
